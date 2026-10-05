@@ -5,6 +5,7 @@ import {
   countSolutions,
   explainLogicalStep,
   findAllConflicts,
+  findForcedUnitStep,
   findLogicalStep,
   findUnitSingleSteps,
   formatTime,
@@ -67,6 +68,16 @@ test('提示步骤包含可读的推理说明', () => {
   assert.ok(['唯一候选', '隐性唯一', '行列宫唯一空位'].includes(explanation.kindLabel));
   assert.match(explanation.summary, /应填/);
   assert.ok(explanation.details.length >= 2);
+});
+
+test('选择单位最后空位只返回应填数字，不修改盘面', () => {
+  const solution = parseGrid(PUZZLES.simple[0].solution);
+  const missingIndex = 8;
+  solution[missingIndex] = 0;
+  const step = findForcedUnitStep(solution, missingIndex);
+  assert.ok(step);
+  assert.equal(step.value, parseGrid(PUZZLES.simple[0].solution)[missingIndex]);
+  assert.equal(solution[missingIndex], 0);
 });
 
 test('单位只剩一个空位时可以直接确定数字', () => {
