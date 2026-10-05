@@ -1,172 +1,677 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101a27">
-  <meta name="description" content="九格档案：四档难度、400 道关卡的 HTML5 数独游戏">
-  <title>九格档案 · Sudoku Archive</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script type="module" src="./main.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101d29">
+<meta name="description" content="云端筑屋：一个离线可玩的重心搭房子游戏。单文件、零依赖、支持鼠标与触屏。">
+<title>云端筑屋 · 天际线堆叠</title>
+<style>
+:root{color-scheme:dark;--bg:#101d29;--panel:#162735;--ink:#f3f2e9;--muted:#8fa4b1;--mint:#b9edcd;--gold:#f1ce94;--line:rgba(211,230,229,.13);--danger:#f3a58e;font-family:Inter,"SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}body{background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent}button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}button:focus-visible{outline:2px solid var(--mint);outline-offset:5px}button:disabled{cursor:default}button,canvas{-webkit-tap-highlight-color:transparent}.app{height:100vh;height:100dvh;max-width:1600px;margin:0 auto;display:flex;flex-direction:column;padding:0 max(24px,env(safe-area-inset-right)) 0 max(24px,env(safe-area-inset-left))}.topbar{height:90px;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:18px}.brand{display:flex;align-items:center;gap:13px}.brand-icon{width:39px;height:43px;color:var(--mint)}.brand-name{font-size:18px;letter-spacing:3px;font-weight:650}.brand-sub{font-size:9px;color:var(--muted);letter-spacing:3.4px;margin-top:6px}.top-actions{display:flex;align-items:center;gap:10px}.best-pill{display:flex;align-items:center;gap:10px;margin-right:10px;font-size:11px;color:var(--muted);letter-spacing:1px}.best-pill svg{color:var(--gold)}.best-pill strong{color:var(--ink);font-size:16px;font-weight:550;letter-spacing:.5px;font-variant-numeric:tabular-nums}.icon-button{width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);transition:background .15s,transform .15s}.icon-button:hover{background:rgba(255,255,255,.09)}.icon-button:active{transform:scale(.95)}.icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.icon-button.active{color:var(--mint);border-color:rgba(185,237,205,.4)}
+.stage{position:relative;flex:1;min-height:0;isolation:isolate;border:1px solid var(--line);border-radius:25px;overflow:hidden;background:#142635}.stage canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}.stage-label{position:absolute;left:32px;top:26px;display:flex;align-items:center;gap:11px;font-size:10px;letter-spacing:2.2px;color:#a3b9be;pointer-events:none}.stage-label i{width:6px;height:6px;display:inline-block;border-radius:50%;background:var(--mint);box-shadow:0 0 12px #b9edcd55}.corner-note{position:absolute;bottom:22px;left:30px;color:#748c99;font-size:10px;letter-spacing:1.2px;pointer-events:none}.corner-note span{color:var(--mint)}.scene-tag{position:absolute;right:30px;bottom:22px;color:#849b9f;font-size:9px;letter-spacing:2px;pointer-events:none}
+.hud{position:absolute;left:30px;top:26px;pointer-events:none}.eyebrow{font-size:10px;letter-spacing:2.6px;color:var(--muted)}.score-line{display:flex;align-items:baseline;gap:13px;margin-top:7px}.score{font-size:51px;font-weight:550;line-height:1;letter-spacing:-2px;font-variant-numeric:tabular-nums}.score-unit{font-size:11px;color:var(--muted)}.floor-line{margin-top:13px;color:#a9b9bf;font-size:12px;letter-spacing:1px}.floor-line strong{font-weight:600;color:var(--ink);font-size:16px}.floor-line .dot{margin:0 10px;opacity:.4}.combo{display:inline-block;margin-top:13px;background:#f1ce9415;border:1px solid #f1ce9430;border-radius:7px;color:var(--gold);padding:5px 8px;font-size:10px;letter-spacing:.8px;transition:opacity .2s}.combo.off{opacity:0}.monitor{position:absolute;right:27px;top:25px;width:191px;padding:17px 18px 14px;border:1px solid var(--line);border-radius:15px;background:rgba(15,30,40,.68);pointer-events:auto}.monitor-title{font-size:10px;color:#9fb2ba;letter-spacing:1.6px;display:flex;justify-content:space-between}.monitor-title svg{width:13px;height:13px;stroke:var(--mint);fill:none;stroke-width:1.4}.stability-row{display:flex;align-items:baseline;justify-content:space-between;gap:5px;margin-top:12px}.stability-word{font-size:12px;color:var(--mint)}.stability-value{font-size:20px;font-variant-numeric:tabular-nums;font-weight:550}.stability-value small{font-size:10px;margin-left:2px;color:var(--muted)}.meter{height:4px;margin-top:10px;background:#43566066;border-radius:4px;overflow:hidden}.meter-fill{width:100%;height:100%;background:var(--mint);border-radius:4px;transition:width .15s linear,background .2s}.joint-label{color:#8ea2ae;font-size:10px;line-height:1.5;margin-top:10px}.guide-toggle{border:0;border-top:1px solid var(--line);padding:11px 0 0;margin-top:11px;width:100%;display:flex;justify-content:space-between;align-items:center;background:none;font-size:10px;color:#a9bbbf;letter-spacing:.3px}.switch{width:24px;height:13px;border-radius:9px;background:#40535f;padding:3px;transition:background .2s}.switch:before{content:"";display:block;width:7px;height:7px;border-radius:50%;background:#142635;transform:translateX(0);transition:transform .2s}.guide-toggle[aria-pressed="true"] .switch{background:var(--mint)}.guide-toggle[aria-pressed="true"] .switch:before{transform:translateX(11px)}
+.hero{position:absolute;left:6%;top:50%;width:375px;transform:translateY(-48%);z-index:3}.tag{display:inline-flex;align-items:center;gap:7px;font-size:10px;letter-spacing:1.3px;color:var(--mint);border:1px solid #b9edcd30;border-radius:20px;padding:7px 12px;background:#b9edcd07}.tag:before{content:"";width:4px;height:4px;border-radius:50%;background:var(--mint)}.hero h1{font-size:52px;line-height:1.24;font-weight:550;letter-spacing:-1.5px;margin:24px 0 20px}.hero h1 em{font-style:normal;color:var(--mint)}.hero p{font-size:13px;line-height:2;color:#a9bcc2;margin:0 0 29px;letter-spacing:.3px}.primary{height:52px;min-width:190px;border:0;border-radius:12px;background:var(--mint);color:#142c2a;font-size:14px;font-weight:650;letter-spacing:1px;padding:0 23px;display:inline-flex;justify-content:space-between;align-items:center;gap:40px;box-shadow:0 4px 24px #00000013;transition:background .15s,transform .15s,box-shadow .15s}.primary:hover{background:#cef7de;box-shadow:0 4px 25px #b9edcd16}.primary:active{transform:translateY(2px)}.primary svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.hero-foot{margin-top:20px;color:#79959f;font-size:10px;letter-spacing:1px;display:flex;gap:18px}.hero-foot span{display:inline-flex;gap:6px;align-items:center}.hero-foot svg{height:12px;width:12px;stroke:#86a69e;fill:none;stroke-width:1.4}.modal-backdrop{position:absolute;inset:0;z-index:6;display:flex;justify-content:center;align-items:center;background:#0b192977;padding:22px}.modal{width:370px;max-width:100%;border:1px solid #cadbd527;background:#152b37f5;box-shadow:0 18px 100px #020d1555;border-radius:22px;padding:31px 30px;text-align:center}.modal-symbol{width:48px;height:48px;margin:0 auto 16px;border:1px solid #f1ce9440;border-radius:15px;display:grid;place-items:center;color:var(--gold);background:#f1ce9408}.modal-symbol svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}.modal h2{font-size:27px;font-weight:550;letter-spacing:1px;margin:10px 0 12px}.modal p{font-size:12px;line-height:1.9;color:#9eb3be;margin:0}.result-grid{display:flex;gap:15px;margin:25px 0}.result-stat{flex:1;padding:15px 5px;background:#ffffff04;border:1px solid var(--line);border-radius:12px}.result-stat strong{font-size:31px;font-weight:550;font-variant-numeric:tabular-nums;display:block}.result-stat span{font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-top:7px}.modal .primary{width:100%;margin-top:19px}.result-grid+.primary{margin-top:0}.secondary{border:0;background:none;color:#9fb4bf;padding:17px 20px 0;font-size:11px;letter-spacing:.7px}.record-tag{font-size:10px;color:var(--gold);letter-spacing:1.5px;margin-bottom:4px}.help-lines{margin:24px 0 0;text-align:left;display:grid;gap:17px}.help-line{display:flex;gap:12px;align-items:flex-start}.help-num{flex:none;display:grid;place-items:center;border:1px solid #b9edcd38;border-radius:7px;color:var(--mint);font-size:10px;width:25px;height:25px}.help-line p{font-size:11px;line-height:1.8}.help-line strong{color:var(--ink);font-weight:500;display:block;margin-bottom:2px}.footer{height:85px;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0 9px;padding-bottom:env(safe-area-inset-bottom)}.control-hint{display:flex;align-items:center;gap:10px;color:#8da5b0;font-size:11px;letter-spacing:.6px}.key{display:inline-block;border:1px solid #9eb1ba33;border-radius:5px;padding:5px 8px;line-height:1;color:#cad6d8;font-size:9px;letter-spacing:1px}.footer-center{font-size:10px;color:#657e8a;letter-spacing:1px;margin-left:auto;margin-right:19px}.drop-button{border:1px solid #b9edcd45;min-width:170px;height:43px;border-radius:11px;background:#b9edcd10;color:var(--mint);padding:0 18px;font-size:12px;letter-spacing:1.5px;transition:background .15s,opacity .15s}.drop-button:hover:not(:disabled){background:#b9edcd20}.drop-button:active:not(:disabled){transform:translateY(1px)}.drop-button:disabled{opacity:.45}.hidden{display:none!important}.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);padding:10px 17px;border:1px solid #b9edcd30;border-radius:30px;background:#112834df;font-size:11px;color:var(--mint);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s;z-index:5}.toast.show{opacity:1}
+@media(min-width:1450px){.app{padding-left:44px;padding-right:44px}.topbar{height:102px}.footer{height:95px}.hero{left:8%}.hero h1{font-size:60px}}
+@media(max-width:900px){.hero{left:5%;width:310px}.hero h1{font-size:43px}.monitor{width:168px}.footer-center{display:none}.hero p{font-size:12px}}
+@media(max-width:600px){.app{padding:0 max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left))}.topbar{height:73px;padding:0 6px;gap:8px}.brand{gap:9px}.brand-icon{width:29px;height:34px}.brand-name{font-size:15px;letter-spacing:2px}.brand-sub{font-size:7px;letter-spacing:2px;margin-top:5px}.top-actions{gap:7px}.best-pill{margin-right:2px;gap:5px;font-size:0}.best-pill strong{font-size:14px}.best-pill svg{width:13px;height:13px}.icon-button{width:32px;height:32px;border-radius:10px}.icon-button svg{width:15px;height:15px}#helpBtn{display:grid}.stage{border-radius:19px}.stage-label{left:22px;top:20px;font-size:8px;letter-spacing:1.5px}.corner-note{left:17px;bottom:17px;font-size:8px;letter-spacing:.5px}.scene-tag{right:17px;bottom:17px;font-size:7px;letter-spacing:1px}.hero{left:26px;top:68px;width:calc(100% - 52px);transform:none}.hero .tag{font-size:9px;padding:6px 10px}.hero h1{font-size:37px;line-height:1.24;letter-spacing:-.6px;margin:17px 0 13px}.hero p{font-size:11px;line-height:1.9;margin-bottom:19px}.hero .primary{height:45px;min-width:170px;font-size:12px;border-radius:10px}.hero-foot{display:none}.hud{left:19px;top:20px}.eyebrow{font-size:8px;letter-spacing:2px}.score{font-size:38px;letter-spacing:-1px}.score-line{gap:9px;margin-top:8px}.score-unit{font-size:9px}.floor-line{font-size:10px;margin-top:9px}.floor-line strong{font-size:13px}.floor-line .dot{margin:0 5px}.combo{margin-top:9px;font-size:9px;padding:4px 6px}.monitor{top:17px;right:15px;width:140px;border-radius:12px;padding:12px}.monitor-title{font-size:8px;letter-spacing:1px}.monitor-title svg{width:11px;height:11px}.stability-row{margin-top:7px}.stability-word{font-size:10px}.stability-value{font-size:16px}.stability-value small{font-size:8px}.meter{margin-top:7px;height:3px}.joint-label{margin-top:7px;font-size:8px}.guide-toggle{margin-top:7px;padding-top:8px;font-size:8px}.footer{height:76px;padding-left:6px;padding-right:6px;gap:9px}.control-hint{font-size:9px;gap:6px;letter-spacing:0}.desktop-hint{display:none}.key{padding:5px 6px;font-size:8px}.drop-button{min-width:127px;height:42px;font-size:11px;padding:0 12px;letter-spacing:1px}.modal{padding:26px 22px;border-radius:18px}.modal h2{font-size:24px}.modal p{font-size:11px}.modal .primary{height:47px}.toast{font-size:10px;max-width:90%;white-space:normal;text-align:center;line-height:1.6;bottom:12px}.stage.has-toast .corner-note,.stage.has-toast .scene-tag{opacity:0}}
+@media(max-height:740px) and (max-width:600px){.topbar{height:64px}.footer{height:66px}.hero{top:54px}.hero h1{font-size:32px;margin:13px 0 9px}.hero p{font-size:10px;line-height:1.7;margin-bottom:14px}.hero .tag{padding:5px 9px;font-size:8px}.hero .primary{height:41px}.stage-label{top:17px}.modal-symbol{margin-bottom:10px}.modal{padding:21px}.result-grid{margin:17px 0}.modal h2{font-size:23px}}
+@media(max-height:520px) and (min-width:601px){.topbar{height:53px}.footer{height:53px}.brand-sub{display:none}.stage-label{top:15px}.hero{width:320px}.hero h1{font-size:33px;margin:12px 0}.hero p{font-size:10px;margin-bottom:14px}.hero-foot{display:none}.hero .primary{height:40px}.hero .tag{font-size:8px;padding:5px 9px}.monitor{padding:10px 13px;top:15px}.hud{top:15px}.score{font-size:35px}.guide-toggle{display:none}.joint-label{display:none}.modal{padding:16px 25px}.modal-symbol{display:none}.modal h2{font-size:21px;margin:6px 0}.result-grid{margin:10px 0}.result-stat{padding:8px}.result-stat strong{font-size:24px}.modal .primary{height:39px;margin-top:10px}.secondary{padding-top:10px}.help-lines{gap:8px;margin-top:12px}}
+@media(max-width:360px){#helpBtn{display:none}.best-pill strong{font-size:12px}}
+@media(prefers-reduced-motion:reduce){button,.meter-fill,.toast,.switch,.switch:before{transition:none}}
+/* 三层画布各自保留内容；静态层不跟着活动方块整屏重绘。 */
+.stage{contain:layout paint}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+#backgroundCanvas,#stackCanvas{pointer-events:none}
+.quality-button{pointer-events:auto;font:inherit;letter-spacing:.5px;color:var(--mint);border:1px solid #b9edcd35;background:#163039;border-radius:5px;padding:4px 7px;margin-left:5px;vertical-align:middle}
+.quality-button:hover{background:#244943}
+.meter-fill{transform-origin:left center;transition:transform .15s linear,background .2s}
+</style>
 </head>
-<body data-theme="night">
-  <div class="grain" aria-hidden="true"></div>
-  <div class="app-shell">
-    <section class="screen menu-screen" id="menu-screen" aria-labelledby="menu-title">
-      <header class="topbar">
-        <a class="wordmark" href="./" aria-label="九格档案首页">
-          <span class="wordmark-mark" aria-hidden="true">9</span>
-          <span><strong>九格档案</strong><small>SUDOKU ARCHIVE</small></span>
-        </a>
-        <div class="topbar-status">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="save-status">本地进度已保存</span>
-        </div>
-        <button class="theme-button" id="menu-theme-toggle" type="button" aria-label="切换到白日模式">☼ 白日模式</button>
-      </header>
-
-      <main class="menu-layout">
-        <section class="menu-copy">
-          <p class="eyebrow">A DAILY LOG OF LOGIC</p>
-          <h1 id="menu-title">把混乱，<br><em>归档成秩序。</em></h1>
-          <p class="intro-text">四种强度，四百份谜题档案。每一次落笔，都是对规则的重新确认。</p>
-          <div class="menu-note">
-            <span class="menu-note-mark">9</span>
-            <p>不猜答案，只遵守规则。<br>每一格都应该有它自己的理由。</p>
-          </div>
-        </section>
-
-        <section class="menu-controls" aria-label="关卡选择">
-          <div class="section-heading">
-            <h2>选择档案柜</h2>
-            <span>4 档 · 400 关</span>
-          </div>
-          <div class="difficulty-list" id="difficulty-list"></div>
-
-          <div class="levels-section">
-            <div class="section-heading">
-              <h2>关卡目录</h2>
-              <span id="level-progress">0 / 100</span>
-            </div>
-            <div class="level-list" id="level-list" aria-label="当前难度关卡"></div>
-            <p class="unlock-note" id="unlock-note">完成当前关卡后解锁下一份档案。</p>
-          </div>
-
-          <button class="primary-button start-button" id="start-button" type="button">开始第 001 份档案</button>
-        </section>
-      </main>
-
-      <footer class="screen-footer">
-        <span>四档难度 · 每档 100 关 · 本地保存</span>
-        <span>RULES MAKE ROOM FOR CLARITY</span>
-      </footer>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 40 44" fill="none" aria-hidden="true"><path d="M5 39h30M10 39V27h19v12M13 26V15h17v11M17 14V5h12v9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 32h4v7m4-20h3v4m-4-14h3v2" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="11" r="1.5" fill="currentColor"/></svg>
+      <div><div class="brand-name">云端筑屋</div><div class="brand-sub">SKYLINE STACK</div></div>
+    </div>
+    <div class="top-actions">
+      <div class="best-pill" title="本机历史最高分"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 3h8v5a4 4 0 0 1-8 0V3Zm0 1H3v3a3 3 0 0 0 3 3m8-6h3v3a3 3 0 0 1-3 3m-4 2v4m-4 1h8"/></svg><span>最佳</span><strong id="bestValue">0</strong></div>
+      <button class="icon-button" id="helpBtn" aria-label="玩法说明" title="玩法说明"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M7.9 7.2a2.2 2.2 0 0 1 4.2.9c0 1.8-2.1 1.7-2.1 3.3m0 2.2v.2"/></svg></button>
+      <button class="icon-button" id="soundBtn" aria-label="开启音效" aria-pressed="false" title="音效开关 · M"><svg id="soundIcon" viewBox="0 0 20 20"><path d="M9 4 5 7H2v6h3l4 3V4Z"/><path id="soundWaves" d="m13 7 5 6m0-6-5 6"/></svg></button>
+      <button class="icon-button" id="pauseBtn" aria-label="暂停游戏" title="暂停 · Esc / P" disabled><svg viewBox="0 0 20 20"><path d="M7 5v10M13 5v10"/></svg></button>
+    </div>
+  </header>
+  <main class="stage" id="stage" aria-label="搭房子游戏区">
+    <canvas id="backgroundCanvas" aria-hidden="true"></canvas>
+    <canvas id="stackCanvas" aria-hidden="true"></canvas>
+    <canvas id="canvas" tabindex="0" aria-label="左右移动的房屋方块，点击或按空格释放。重心需留在支撑范围内。">你的浏览器不支持 Canvas，请使用支持 HTML5 的浏览器。</canvas>
+    <div id="stageLabel" class="stage-label"><i></i> BUILD HIGH. STAY BALANCED.</div>
+    <section class="hud hidden" id="hud" aria-label="当前成绩">
+      <div class="eyebrow">本次得分 / SCORE</div>
+      <div class="score-line"><span class="score" id="scoreValue">0</span><span class="score-unit">分</span></div>
+      <div class="floor-line"><strong id="floorValue">0</strong> 层<span class="dot">/</span><span id="heightValue">0</span> 米</div>
+      <div class="combo off" id="comboValue">精准 × 1</div>
     </section>
-
-    <section class="screen game-screen" id="game-screen" aria-labelledby="stage-title" hidden>
-      <header class="topbar game-topbar">
-        <button class="back-button" id="menu-button" type="button">‹ 返回档案目录</button>
-        <div class="game-wordmark">
-          <span class="wordmark-mark" aria-hidden="true">9</span>
-          <span><strong>九格档案</strong><small id="stage-eyebrow">SIMPLE / FILE 001</small></span>
-        </div>
-        <div class="game-actions">
-          <button class="theme-button" id="game-theme-toggle" type="button" aria-label="切换到白日模式">☼ 白日模式</button>
-          <button class="quiet-button" id="pause-button" type="button">暂停计时</button>
-          <button class="quiet-button" id="reset-button" type="button">重置本关</button>
-        </div>
-      </header>
-
-      <main class="game-layout">
-        <section class="board-column" aria-label="数独棋盘">
-          <div class="stage-heading">
-            <div>
-              <p class="eyebrow" id="stage-difficulty">简单 · 入门推理</p>
-              <h1 id="stage-title">第 001 份档案</h1>
-            </div>
-            <div class="stage-index" aria-label="当前关卡">
-              <span>CASE</span>
-              <strong id="stage-index">001</strong>
-            </div>
-          </div>
-
-          <div class="metrics-strip" aria-label="游戏状态">
-            <div class="metric metric-timer">
-              <span class="metric-label">用时</span>
-              <strong id="timer">00:00</strong>
-            </div>
-            <div class="metric">
-              <span class="metric-label">已填</span>
-              <strong><span id="filled-count">0</span><small> / 81</small></strong>
-            </div>
-            <div class="metric">
-              <span class="metric-label">逻辑冲突</span>
-              <strong id="mistake-count">0</strong>
-            </div>
-            <div class="pause-label" id="pause-label" hidden>计时已暂停</div>
-          </div>
-
-          <div class="board-wrap">
-            <div class="board" id="board" role="grid" aria-label="数独 9 乘 9 棋盘"></div>
-            <div class="paused-cover" id="paused-cover" hidden>
-              <span class="pause-glyph">Ⅱ</span>
-              <strong>档案暂存中</strong>
-              <span>点击“继续计时”回到棋盘</span>
-            </div>
-          </div>
-        </section>
-
-        <aside class="game-controls" aria-label="数独控制">
-          <div class="logic-panel" id="logic-panel" aria-live="polite">
-            <div class="logic-panel-heading">
-              <span class="logic-kicker">LOGIC NOTE</span>
-              <span class="logic-kind" id="logic-kind">等待落笔</span>
-            </div>
-            <h2 id="logic-title">每一个数字，都应该有理由。</h2>
-            <div class="logic-details" id="logic-details">
-              <p>选择一个空格，使用下方数字；或先打开笔记模式记录候选。</p>
-            </div>
-          </div>
-
-          <div class="selection-bar">
-            <p class="selection-hint" id="selection-hint">选择一个空格开始记录。</p>
-            <button class="clear-button" id="clear-button" type="button">清除</button>
-          </div>
-
-          <div class="keypad" id="keypad" aria-label="数字键盘"></div>
-
-          <div class="mode-row">
-            <button class="mode-button" id="notes-button" type="button" aria-pressed="false">
-              <span class="mode-icon">✎</span>
-              <span><strong>笔记模式</strong><small>记录候选数字</small></span>
-            </button>
-            <button class="mode-button hint-button" id="hint-button" type="button">
-              <span class="mode-icon">?</span>
-              <span><strong id="hint-label">使用一次提示</strong><small>提示会解释推理过程</small></span>
-            </button>
-          </div>
-
-          <button class="outline-button check-button" id="check-button" type="button">检查当前逻辑</button>
-          <p class="control-help"><kbd>1</kbd>—<kbd>9</kbd> 输入 <span>·</span> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> 移动 <span>·</span> 无选择时点击数字可高亮盘面</p>
-        </aside>
-      </main>
+    <aside class="monitor hidden" id="monitor" aria-label="重心监测">
+      <div class="monitor-title">结构监测 <svg viewBox="0 0 16 16"><path d="M1 12h14M3 8l5-5 5 5M8 3v9"/><circle cx="8" cy="8" r="1.5"/></svg></div>
+      <div class="stability-row"><span class="stability-word" id="stabilityWord">稳如磐石</span><span class="stability-value"><span id="stabilityValue">100</span><small>%</small></span></div>
+      <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+      <div class="joint-label" id="jointLabel">基础稳固 · 等待第一层</div>
+      <button id="guideBtn" class="guide-toggle" aria-pressed="true" title="显示重心和预计落点 · G"><span>重心与落点辅助</span><span class="switch" aria-hidden="true"></span></button>
+    </aside>
+    <section class="hero" id="hero">
+      <div class="tag">一款关于平衡的小小挑战</div>
+      <h1>一层一层，<br>把家搭上<em>云端。</em></h1>
+      <p>找准时机，落下你的下一间小屋。<br>越往上，越考验分寸；让重心留在支撑之内。</p>
+      <button class="primary" id="startBtn"><span>开始建造</span><svg viewBox="0 0 20 20"><path d="M4 16 16 4M5 4h11v11"/></svg></button>
+      <div class="hero-foot"><span><svg viewBox="0 0 14 14"><path d="m2 7 3 3 7-7"/></svg> 无尽建造</span><span><svg viewBox="0 0 14 14"><rect x="3" y="1" width="8" height="12" rx="2"/><path d="M6 11h2"/></svg> 触屏友好</span><span><svg viewBox="0 0 14 14"><path d="M7 1v6l4 2"/><circle cx="7" cy="7" r="6"/></svg> 离线可玩</span></div>
     </section>
-  </div>
+    <div class="modal-backdrop hidden" id="pauseOverlay">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+        <div class="modal-symbol"><svg viewBox="0 0 30 30"><path d="M11 7v16M19 7v16"/></svg></div>
+        <div class="eyebrow">TAKE A BREATH</div><h2 id="pauseTitle">让城市歇一会儿</h2><p>你的每一层，都还在原处。</p>
+        <button class="primary" id="resumeBtn"><span>继续建造</span><span>↗</span></button><button class="secondary" id="pauseRestartBtn">重新开始</button>
+      </section>
+    </div>
+    <div class="modal-backdrop hidden" id="helpOverlay">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="eyebrow">THE ART OF BALANCE</div><h2 id="helpTitle">高一点，也稳一点。</h2>
+        <div class="help-lines">
+          <div class="help-line"><span class="help-num">01</span><p><strong>看准落点，轻点释放</strong>小屋会左右移动。点击画面、下方按钮或按空格，让它落下。</p></div>
+          <div class="help-line"><span class="help-num">02</span><p><strong>留意整栋楼的重心</strong>每个接缝都要承受上方所有楼层。连续向一侧偏移，会让下层先失去平衡。</p></div>
+          <div class="help-line"><span class="help-num">03</span><p><strong>越高越窄，居中拿连击</strong>精准落点会轻微吸附并获得连击加分。虚线是预计落点，圆点和横线是最弱接缝的重心与支撑。</p></div>
+        </div>
+        <button class="primary" id="helpCloseBtn"><span>明白了</span><span>✓</span></button>
+      </section>
+    </div>
+    <div class="modal-backdrop hidden" id="resultOverlay">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+        <div class="modal-symbol"><svg viewBox="0 0 30 30"><path d="M5 25h20M8 24V14h12v10M13 12l2-9 10 2-2 9-10-2Z"/><path d="m18 7 3 .6M12 19h4"/></svg></div>
+        <div class="record-tag hidden" id="recordTag">✧ 刷新了你的天际线纪录 ✧</div>
+        <div class="eyebrow" id="resultEyebrow">EVERY FLOOR COUNTS</div><h2 id="resultTitle">重心失守</h2><p id="resultReason">再来一次，把天际线搭得更高。</p>
+        <div class="result-grid"><div class="result-stat"><strong id="resultScore">0</strong><span>本次得分</span></div><div class="result-stat"><strong id="resultFloors">0</strong><span>成功楼层</span></div></div>
+        <button class="primary" id="restartBtn"><span>再筑一座</span><span>↗</span></button><button class="secondary" id="homeBtn">回到首页</button>
+      </section>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="corner-note"><span id="fpsValue">—</span> FPS <span style="color:#526f7a">/</span><button id="qualityBtn" class="quality-button" title="画质切换 · Q" aria-label="画质：流畅，点击切换">流畅 ▾</button></div>
+    <div class="scene-tag" id="sceneTag">慢一点，稳一点，再高一点。</div>
+  </main>
+  <footer class="footer">
+    <div class="control-hint"><span class="key">SPACE</span><span>或轻点画面释放</span><span class="desktop-hint">&nbsp;&nbsp;·&nbsp;&nbsp; ESC 暂停</span></div>
+    <span class="footer-center">把重心留住，把天际线交给你。</span>
+    <button class="drop-button" id="dropBtn">开始建造 ↗</button>
+  </footer>
+</div>
+<script>
+/*
+ * 云端筑屋 — 单文件 Canvas 游戏，无外部字体、资源、库或网络请求。
+ *
+ * 物理模型（二维、统一密度、刚性楼层）：
+ * 1. 对每个接缝求上方所有楼层的质量与加权重心；接触区是相邻楼层的横向交集。
+ * 2. 小幅弹性摆动 θ 下，重力线在接缝平面的交点为 x_com + tan(θ) * (y_com - y_joint)。
+ * 3. 任一接缝重力线持续越出接触区，该接缝上方的整个子塔绕支撑边缘倾倒。
+ * 4. 倾倒阶段按重力矩 / 转动惯量积分，随后解体为带重力与旋转的碎块。
+ *    这是针对堆叠游戏的简化结构模型，不是通用刚体碰撞求解器。
+ *
+ * 流畅版：60 Hz 固定物理步 + 帧间插值，最多补算 4 步；不把卡顿累积成追帧风暴。
+ * 背景 / 已建结构 / 活动物体分层；稳定塔不重绘；活动层仅擦除上帧的脏矩形。
+ * 流畅模式默认 1 倍像素，并限制画布总像素数；持续掉帧时自动下调分辨率。
+ * 纹理直接复用，飘字只栅格化一次；离屏楼层释放纹理引用；粒子池有硬上限。
+ * DOM 只在数据变化时更新，菜单 / 暂停 / 结算 / 后台停止动画循环。
+ * 无联网请求；可用 ?test=1 开启确定性测试接口。
+ */
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const canvas=$('canvas'), effectsCtx=canvas.getContext('2d',{alpha:true});
+const backgroundCanvas=$('backgroundCanvas'), backgroundCtx=backgroundCanvas.getContext('2d',{alpha:false});
+const stackCanvas=$('stackCanvas'), stackCtx=stackCanvas.getContext('2d',{alpha:true});
+// 绘制函数共享一套坐标系；只在绘制不同层时切换目标上下文。
+let ctx=effectsCtx;
+if(!ctx||!backgroundCtx||!stackCtx){$('hero').innerHTML='<h1>需要 Canvas 支持</h1><p>请在支持 HTML5 的浏览器中打开此文件。</p>';return;}
+const UI={stage:$('stage'),hero:$('hero'),label:$('stageLabel'),hud:$('hud'),monitor:$('monitor'),score:$('scoreValue'),floors:$('floorValue'),height:$('heightValue'),combo:$('comboValue'),best:$('bestValue'),word:$('stabilityWord'),value:$('stabilityValue'),fill:$('meterFill'),joint:$('jointLabel'),guide:$('guideBtn'),drop:$('dropBtn'),pause:$('pauseBtn'),sound:$('soundBtn'),pauseOverlay:$('pauseOverlay'),helpOverlay:$('helpOverlay'),result:$('resultOverlay'),toast:$('toast'),fps:$('fpsValue')};
+const TAU=Math.PI*2, STEP=1/60, FLOOR_H=40, BASE_W=216, GRAVITY=1180, MAX_PARTICLES=48;
+const MAX_CATCHUP=4, CAMERA_EASE=1-Math.exp(-5.2*STEP), AIM_EASE=1-Math.exp(-9*STEP);
+const QUALITY=[
+  {name:'流畅',maxDpr:1,pixels:900000,particles:12},
+  {name:'省电',maxDpr:.75,pixels:500000,particles:4},
+  {name:'清晰',maxDpr:1.5,pixels:1800000,particles:24}
+];
+const stats={frames:0,physicsSteps:0,backgroundPaints:0,stackPaints:0,textureBuilds:0,clearedPixels:0};
+const MINT='#b9edcd', GOLD='#f1ce94', RED='#f3a58e';
+const STORE_KEY='skyhouse-stack-v1';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const widthAt=n=>30+134*Math.exp(-.041*n); // 持续收窄，渐近最小宽度，避免后期变成不可见的细线。
+const numberFormat=new Intl.NumberFormat('zh-CN');
+const number=n=>numberFormat.format(Math.max(0,Math.floor(n)));
+let seed=71023;
+function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+function seeded(n){let s=(n+17)>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+function roundRect(c,x,y,w,h,r){r=Math.min(r,w/2,h/2);c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+function makeCanvas(w,h){const c=document.createElement('canvas');c.width=Math.max(1,Math.ceil(w));c.height=Math.max(1,Math.ceil(h));return c;}
+let saved={best:0,bestFloors:0,sound:false,guide:true,quality:0};
+try{const p=JSON.parse(localStorage.getItem(STORE_KEY)||'null');if(p&&typeof p==='object'){saved.best=Number.isFinite(p.best)?Math.max(0,p.best):0;saved.bestFloors=Number.isFinite(p.bestFloors)?Math.max(0,p.bestFloors):0;saved.sound=p.sound===true;saved.guide=p.guide!==false;saved.quality=Number.isInteger(p.quality)&&p.quality>=0&&p.quality<QUALITY.length?p.quality:0;}}catch(_){}
+function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved));}catch(_){/* 禁用存储/隐私模式下仍可正常游玩。 */}}
+UI.best.textContent=number(saved.best);
+const reducedMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let state='menu',paused=false,helpWasPaused=false;
+let cw=1,ch=1,scale=1,dpr=1,qualityDpr=QUALITY[saved.quality].maxDpr,centerX=0,groundSY=0,resizePending=true;
+let sky=null,cityFar=null,cityNear=null;
+let blocks=[],joints=[],active=null,collapse=null,pieces=[];
+let score=0,floors=0,combo=0,pendingAward=null;
+let camera=0,prevCamera=0,sway=0,prevSway=0,swayV=0,shake=0;
+let simTime=0,menuTime=0,settleTime=0,unstableTime=0,collapseTime=0,toastTime=0;
+let stability={safety:1,margin:108,index:-1,forceX:0,comX:0,comY:0,left:-108,right:108,y:0};
+let prediction={safe:true,safety:1,margin:108},predictionTime=0;
+let lastSwayEval=99,lastNow=0,accumulator=0,rafId=0;
+let fpsStart=0,fpsFrames=0,averageMs=16.67,slowTime=0,lastQualityChange=0,uiTime=0;
+let towerDirty=true,towerCamera=NaN,towerSway=NaN,towerState='',backgroundCamera=NaN;
+const damage={left:Infinity,top:Infinity,right:-Infinity,bottom:-Infinity};
+function includeDamage(x,y,w,h){
+  damage.left=Math.min(damage.left,x);damage.top=Math.min(damage.top,y);
+  damage.right=Math.max(damage.right,x+w);damage.bottom=Math.max(damage.bottom,y+h);
+}
+function clearEffects(){
+  if(damage.right>damage.left){
+    const l=Math.max(0,Math.floor(damage.left*dpr)-2),t=Math.max(0,Math.floor(damage.top*dpr)-2);
+    const r=Math.min(canvas.width,Math.ceil(damage.right*dpr)+2),b=Math.min(canvas.height,Math.ceil(damage.bottom*dpr)+2);
+    if(r>l&&b>t){effectsCtx.setTransform(1,0,0,1,0,0);effectsCtx.clearRect(l,t,r-l,b-t);stats.clearedPixels+=(r-l)*(b-t);}
+  }
+  damage.left=damage.top=Infinity;damage.right=damage.bottom=-Infinity;
+}
+function wake(){if(!rafId&&!document.hidden)rafId=requestAnimationFrame(frame);}
+function isPlaying(){return state==='aiming'||state==='falling'||state==='settling'||state==='collapsing';}
+function isFrozen(){return paused||!UI.helpOverlay.classList.contains('hidden')||!isPlaying();}
+let dropSerial=0,newRecord=false,failedReason='',failureType='';
+const particles=Array.from({length:MAX_PARTICLES},()=>({life:0,max:1,x:0,y:0,vx:0,vy:0,size:1,col:MINT}));
+let particleCursor=0;
+const floaters=Array.from({length:6},()=>({life:0,x:0,y:0,text:'',col:MINT,sprite:null,sw:0,sh:0}));
+let floaterCursor=0;
+const texCache=new Map();
+const demoBlocks=Array.from({length:6},(_,i)=>({x:[0,-6,3,9,4,1][i],y:i*FLOOR_H+FLOOR_H/2,w:widthAt(i+1),h:FLOOR_H,level:i}));
+const palettes=[{wall:'#89b8a6',shade:'#668e83',roof:'#cce2cc',glass:'#2d5553'}, {wall:'#d6b293',shade:'#ad8d76',roof:'#efdbc2',glass:'#615a52'}, {wall:'#9bb7c1',shade:'#758f9b',roof:'#d7e6df',glass:'#345764'}, {wall:'#b6acc2',shade:'#91899d',roof:'#dfd5de',glass:'#514960'}];
+const paletteOrder=[0,0,1,2,0,3,1,2];
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+// 纹理只在首次出现时绘制；块自身持有热引用，避免每一帧修改 Map。
+function texture(b){
+  const w=Math.round(b.w),h=FLOOR_H,key=w+':'+(b.level%8)+':'+(b.level%3);
+  let t=texCache.get(key);if(t)return t;stats.textureBuilds++;
+  const m=6,r=Math.min(2,Math.max(1,dpr*scale)),c=makeCanvas((w+m*2)*r,(h+m*2)*r),g=c.getContext('2d');g.scale(r,r);g.translate(m,m);
+  const p=palettes[paletteOrder[b.level%8]],rnd=seeded(b.level*47+21);
+  g.fillStyle='#020d182b';roundRect(g,2,3,w,h,3);g.fill();
+  g.fillStyle=p.wall;roundRect(g,0,0,w,h,3);g.fill();
+  g.fillStyle=p.shade;g.fillRect(w-5,4,5,h-5);g.fillRect(0,h-4,w,4);
+  g.fillStyle=p.roof;roundRect(g,0,0,w,5,2);g.fill();
+  g.fillStyle='#ffffff1a';g.fillRect(2,5,2,h-10);
+  const cols=Math.max(1,Math.floor((w-10)/30)),ww=Math.min(17,(w-14)/cols-9),gap=(w-12-cols*ww)/(cols+1);
+  for(let i=0;i<cols;i++){
+    const x=6+gap+i*(ww+gap),y=12,lit=rnd()>.38;
+    g.fillStyle=p.shade;roundRect(g,x-1,y-1,ww+2,20,1.5);g.fill();
+    g.fillStyle=lit?'#f4dcb0':p.glass;g.fillRect(x,y,ww,17);
+    g.fillStyle=lit?'#c5ad8199':'#74939955';g.fillRect(x+ww/2-.5,y,1,17);g.fillRect(x,y+8,ww,1);
+    g.fillStyle=p.roof;g.fillRect(x-2,y+18,ww+4,2);
+    if(lit){g.fillStyle='#fff7d344';g.fillRect(x+1,y+1,ww/2-2,7);}
+  }
+  g.fillStyle='#526b631f';for(let i=0;i<3;i++)g.fillRect(7+i*3,7,1,2);
+  texCache.set(key,c);if(texCache.size>48)texCache.delete(texCache.keys().next().value);return c;
+}
+function drawModule(b,x=b.x,y=b.y,angle=0,alpha=1){
+  const sy=groundSY-(y-camera)*scale;if(sy<-140||sy>ch+160)return;
+  if(ctx===effectsCtx){const radius=Math.hypot(b.w/2+6,b.h/2+6)*scale+5;includeDamage(centerX+x*scale-radius,sy-radius,radius*2,radius*2);}
+  ctx.save();ctx.translate(centerX+x*scale,sy);if(angle)ctx.rotate(angle);ctx.globalAlpha=alpha;
+  const t=b.sprite||(b.sprite=texture(b));ctx.drawImage(t,-(b.w/2+6)*scale,-(b.h/2+6)*scale,(b.w+12)*scale,(b.h+12)*scale);ctx.restore();
+}
+function drawLocalModule(b){const t=b.sprite||(b.sprite=texture(b));ctx.drawImage(t,b.x-b.w/2-6,-b.y-b.h/2-6,b.w+12,b.h+12);}
+function toScreen(x,y){return{x:centerX+x*scale,y:groundSY-(y-camera)*scale};}
+function rotatePoint(x,y,a){const c=Math.cos(a),s=Math.sin(a);return{x:x*c+y*s,y:y*c-x*s};}
+function topY(){return blocks.length?blocks[blocks.length-1].y+FLOOR_H/2:0;}
+function topX(){return blocks.length?blocks[blocks.length-1].x:0;}
 
-  <div class="modal-backdrop" id="complete-modal" hidden>
-    <section class="complete-modal" role="dialog" aria-modal="true" aria-labelledby="complete-title">
-      <button class="modal-close" id="modal-close" type="button" aria-label="关闭">×</button>
-      <p class="eyebrow">CASE CLOSED</p>
-      <div class="complete-seal" aria-hidden="true">✓</div>
-      <h2 id="complete-title">档案已归档</h2>
-      <p id="complete-message">你用 00:00 完成了这一关。</p>
-      <div class="complete-stats">
-        <span><small>本次用时</small><strong id="complete-time">00:00</strong></span>
-        <span><small>当前档案</small><strong id="complete-level">001 / 100</strong></span>
-      </div>
-      <button class="primary-button" id="next-button" type="button">打开下一份档案</button>
-    </section>
-  </div>
+function buildCity(width,height,near){
+  const c=makeCanvas(width*dpr,height*dpr),g=c.getContext('2d');g.scale(dpr,dpr);const rnd=seeded(near?121:86);
+  let x=-12;while(x<width+10){const w=18+rnd()*(near?44:30),h=20+rnd()*(near?100:95),y=height-h;
+    g.fillStyle=near?'#203c49':'#1d3344';roundRect(g,x,y,w,h+4,2);g.fill();
+    if(rnd()>.5){g.fillRect(x+w*.25,y-6,w*.5,7);if(rnd()>.55)g.fillRect(x+w*.6,y-17,1,12);}
+    g.fillStyle=near?'#6c877745':'#526d7326';for(let wy=y+10;wy<height-5;wy+=12)for(let wx=x+6;wx<x+w-6;wx+=9)if(rnd()>.46)g.fillRect(wx,wy,2,3);
+    x+=w+(near?5:3);
+  }return c;
+}
+function resize(){
+  const box=UI.stage.getBoundingClientRect();cw=Math.max(1,Math.floor(box.width-2));ch=Math.max(1,Math.floor(box.height-2));
+  const q=QUALITY[saved.quality];
+  const nextDpr=Math.min(window.devicePixelRatio||1,qualityDpr,Math.sqrt(q.pixels/(cw*ch)));
+  dpr=Math.max(.45,nextDpr);
+  for(const c of [canvas,backgroundCanvas,stackCanvas]){c.width=Math.max(1,Math.round(cw*dpr));c.height=Math.max(1,Math.round(ch*dpr));}
+  damage.left=damage.top=Infinity;damage.right=damage.bottom=-Infinity;
+  towerDirty=true;backgroundCamera=NaN;
+  texCache.clear();for(const b of blocks)b.sprite=null;for(const b of demoBlocks)b.sprite=null;
+  if(active)active.sprite=null;for(const b of pieces)b.sprite=null;
+  if(collapse)for(const b of collapse.group)b.sprite=null;
+  scale=Math.min(cw/480,ch/515,1.3);scale=Math.max(.35,scale);centerX=state==='menu'?cw*(cw>650?.69:.60):cw*.5;
+  groundSY=ch-Math.max(43,64*scale);
+  sky=makeCanvas(canvas.width,canvas.height);const g=sky.getContext('2d');g.scale(dpr,dpr);
+  const grad=g.createLinearGradient(0,0,cw*.45,ch);grad.addColorStop(0,'#182a3b');grad.addColorStop(.56,'#1b3445');grad.addColorStop(1,'#315354');g.fillStyle=grad;g.fillRect(0,0,cw,ch);
+  const glow=g.createRadialGradient(cw*.76,ch*.48,0,cw*.76,ch*.48,cw*.62);glow.addColorStop(0,'#65998c12');glow.addColorStop(1,'#65998c00');g.fillStyle=glow;g.fillRect(0,0,cw,ch);
+  const rnd=seeded(851);for(let i=0;i<95;i++){const x=rnd()*cw,y=rnd()*ch*.77,r=rnd()>.93?1.25:.65;g.globalAlpha=.12+rnd()*.33;g.fillStyle='#dbe8dc';g.beginPath();g.arc(x,y,r,0,TAU);g.fill();}g.globalAlpha=1;
+  const mx=cw*.83,my=ch*.19,mr=Math.max(15,Math.min(cw,ch)*.035);
+  const halo=g.createRadialGradient(mx,my,mr*.4,mx,my,mr*3.8);halo.addColorStop(0,'#d8eac21a');halo.addColorStop(1,'#d8eac200');g.fillStyle=halo;g.beginPath();g.arc(mx,my,mr*3.8,0,TAU);g.fill();
+  g.fillStyle='#d8e7c4aa';g.beginPath();g.arc(mx,my,mr,0,TAU);g.fill();g.fillStyle='#b6caaa20';g.beginPath();g.arc(mx-mr*.24,my+mr*.16,mr*.27,0,TAU);g.fill();
+  cityFar=buildCity(cw,160,false);cityNear=buildCity(cw,190,true);
+  resizePending=false;predictionTime=0;
+  if(active)active.sprite=texture(active);
+  for(const f of floaters)if(f.life>0)buildFloaterSprite(f);
+  paintBackground(true);refreshQuality();
+}
+
+// 每个接缝缓存上方子塔的静态质量和重心，避免 O(n²) 重复求和。
+function rebuildJoints(){
+  towerDirty=true;joints.length=0;let m=0,mx=0,my=0;
+  for(let i=blocks.length-1;i>=0;i--){const b=blocks[i],bm=b.w*b.h;m+=bm;mx+=bm*b.x;my+=bm*b.y;
+    const below=i?blocks[i-1]:null,l=below?below.x-below.w/2:-BASE_W/2,r=below?below.x+below.w/2:BASE_W/2;
+    joints.push({index:i,mass:m,mx:mx/m,my:my/m,left:Math.max(l,b.x-b.w/2),right:Math.min(r,b.x+b.w/2),y:b.y-b.h/2});
+  }lastSwayEval=99;
+}
+function assess(){
+  const out=stability;
+  if(!joints.length){out.safety=1;out.margin=BASE_W/2;out.index=-1;out.forceX=out.comX=out.comY=out.y=0;out.left=-BASE_W/2;out.right=BASE_W/2;lastSwayEval=sway;return;}
+  const tan=Math.tan(sway);let worst=Infinity,minMargin=Infinity,wj=null,force=0;
+  for(let i=0;i<joints.length;i++){
+    const j=joints[i],px=j.mx+tan*(j.my-j.y),margin=Math.min(px-j.left,j.right-px),half=(j.right-j.left)*.5;
+    const safety=half>0?margin/half:-1;
+    if(safety<worst){worst=safety;wj=j;force=px;}minMargin=Math.min(minMargin,margin);
+  }
+  out.safety=clamp(worst,0,1);out.margin=minMargin;out.index=wj.index;out.forceX=force;out.comX=wj.mx;out.comY=wj.my;out.left=wj.left;out.right=wj.right;out.y=wj.y;
+  lastSwayEval=sway;
+}
+function predictAt(x,w,out={}){
+  const below=blocks.length?blocks[blocks.length-1]:null,y=topY()+FLOOR_H/2,m=w*FLOOR_H,tan=Math.tan(sway);
+  const left=Math.max(x-w/2,below?below.x-below.w/2:-BASE_W/2),right=Math.min(x+w/2,below?below.x+below.w/2:BASE_W/2);
+  let margin=Math.min(x-left,right-x),safety=(right>left)?margin/((right-left)/2):-1,index=blocks.length;
+  for(let i=0;i<joints.length;i++){
+    const j=joints[i],px=(j.mx*j.mass+x*m)/(j.mass+m),dy=(j.my*j.mass+y*m)/(j.mass+m)-j.y;
+    const force=px+tan*dy,q=Math.min(force-j.left,j.right-force),s=(j.right>j.left)?q/((j.right-j.left)*.5):-1;
+    if(s<safety){safety=s;index=j.index;}margin=Math.min(margin,q);
+  }out.safe=margin>=0;out.safety=clamp(safety,0,1);out.margin=margin;out.index=index;return out;
+}
+function localDropX(worldX){const y=topY()+FLOOR_H/2;return(worldX-y*Math.sin(sway))/Math.cos(sway);}
+function snappedX(x,w){const px=topX(),tol=Math.max(2.3,w*.032);return Math.abs(x-px)<=tol?px:x;}
+
+function addParticle(x,y,vx,vy,col,size,life){const p=particles[particleCursor++%MAX_PARTICLES];p.x=x;p.y=y;p.vx=vx;p.vy=vy;p.col=col;p.size=size;p.life=p.max=life;}
+function emitLanding(b,perfect){
+  const n=reducedMotion?3:perfect?QUALITY[saved.quality].particles:Math.min(6,QUALITY[saved.quality].particles);
+  for(let i=0;i<n;i++){const side=i%2?-1:1;addParticle(b.x+side*b.w*(.35+rand()*.15),b.y-b.h/2+3,side*(20+rand()*85),35+rand()*100,perfect?MINT:GOLD,1.5+rand()*2,.35+rand()*.5);}
+}
+function buildFloaterSprite(p){
+  const fontSize=Math.max(11,13*scale),font='600 '+fontSize+'px -apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif';
+  const c=makeCanvas(1,1),g=c.getContext('2d'),ratio=Math.max(1,dpr);
+  g.font=font;p.sw=Math.ceil(g.measureText(p.text).width+12);p.sh=Math.ceil(fontSize*1.8);
+  c.width=Math.ceil(p.sw*ratio);c.height=Math.ceil(p.sh*ratio);g.scale(ratio,ratio);g.font=font;
+  g.textAlign='center';g.textBaseline='middle';g.fillStyle=p.col;g.fillText(p.text,p.sw/2,p.sh/2);p.sprite=c;
+}
+function floatText(text,x,y,col=MINT){
+  const p=floaters[floaterCursor++%floaters.length];p.text=text;p.x=x;p.y=y;p.col=col;p.life=1.35;buildFloaterSprite(p);
+}
+let toastTimer=0;
+function toast(text,time=2.2){
+  UI.toast.textContent=text;UI.toast.classList.add('show');UI.stage.classList.add('has-toast');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>{UI.toast.classList.remove('show');UI.stage.classList.remove('has-toast');},time*1000);
+}
+// 音效只在用户交互后开启。
+let audio=null;
+function unlockAudio(){if(!saved.sound)return;try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;if(!audio)audio=new A();if(audio.state==='suspended')audio.resume().catch(()=>{});}catch(_){}}
+function tone(freq,duration=.13,kind='sine',volume=.04,delay=0){if(!saved.sound||!audio||audio.state!=='running')return;try{const t=audio.currentTime+delay,o=audio.createOscillator(),g=audio.createGain();o.type=kind;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(volume,t+.009);g.gain.exponentialRampToValueAtTime(.0001,t+duration);o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+duration+.015);o.onended=()=>{o.disconnect();g.disconnect();};}catch(_){}}
+function landingSound(perfect){const notes=[261.63,293.66,329.63,392,440,523.25,587.33,659.25];const f=notes[floors%notes.length];tone(f,.19,'sine',.065);if(perfect){tone(f*1.25,.24,'sine',.035,.06);tone(f*1.5,.26,'sine',.028,.12);}}
+function refreshSettings(){UI.sound.setAttribute('aria-pressed',String(saved.sound));UI.sound.setAttribute('aria-label',saved.sound?'关闭音效':'开启音效');UI.sound.classList.toggle('active',saved.sound);$('soundWaves').setAttribute('d',saved.sound?'M12 7a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12':'m13 7 5 6m0-6-5 6');UI.guide.setAttribute('aria-pressed',String(saved.guide));}
+function toggleSound(){saved.sound=!saved.sound;save();refreshSettings();unlockAudio();if(saved.sound)tone(523,.15);}
+function toggleGuide(){saved.guide=!saved.guide;save();refreshSettings();towerDirty=true;predictionTime=0;wake();toast(saved.guide?'已显示重心与预计落点':'已隐藏辅助线');}
+function refreshQuality(){
+  const q=QUALITY[saved.quality],el=$('qualityBtn');
+  el.textContent=q.name+' ▾';el.setAttribute('aria-label','画质：'+q.name+'，点击切换');
+  el.title='画质：'+q.name+' · 渲染倍率 '+dpr.toFixed(2)+' · 点击切换 / Q';
+}
+function toggleQuality(){
+  saved.quality=(saved.quality+1)%QUALITY.length;qualityDpr=QUALITY[saved.quality].maxDpr;
+  averageMs=16.67;slowTime=0;lastQualityChange=performance.now();save();resizePending=true;towerDirty=true;wake();
+  toast('画质：'+QUALITY[saved.quality].name+' · 重心与计分规则不变',2);
+}
+
+function spawn(){
+  const level=blocks.length,w=widthAt(level),mobile=cw<650;
+  const side=rand()>.5?1:-1,worldHalf=cw/(2*scale);
+  const amplitude=Math.min(Math.max(110,w*1.12),Math.max(55,worldHalf-w/2-19));
+  const edge=Math.max(0,worldHalf-amplitude-w/2-13),cx=clamp(topX(),-edge,edge);
+  const sy=Math.max(mobile?155:142,ch*.245);
+  const y=Math.max(topY()+100,camera+(groundSY-sy)/scale);
+  const phase=side*(.95+rand()*.25);
+  active={x:cx+Math.sin(phase)*amplitude,y,w,h:FLOOR_H,level,vy:0,vx:0,angle:0,phase,amplitude,cx,speed:.87+Math.min(.85,level*.027),prevX:0,prevY:y};active.prevX=active.x;active.sprite=texture(active);
+  state='aiming';predictionTime=0;UI.drop.disabled=false;UI.drop.textContent='落下这一层 ↓';
+}
+function start(){
+  unlockAudio();towerDirty=true;wake();state='aiming';paused=false;blocks=[];joints=[];pieces=[];collapse=null;active=null;score=0;floors=0;combo=0;pendingAward=null;
+  fpsStart=0;fpsFrames=0;averageMs=16.67;slowTime=0;uiTime=0;
+  camera=prevCamera=0;sway=prevSway=swayV=0;shake=0;simTime=0;settleTime=0;unstableTime=0;collapseTime=0;newRecord=false;failedReason='';failureType='';lastSwayEval=99;
+  particles.forEach(p=>p.life=0);floaters.forEach(p=>p.life=0);UI.hero.classList.add('hidden');UI.label.classList.add('hidden');UI.hud.classList.remove('hidden');UI.monitor.classList.remove('hidden');
+  UI.result.classList.add('hidden');UI.pauseOverlay.classList.add('hidden');UI.helpOverlay.classList.add('hidden');UI.pause.disabled=false;centerX=cw*.5;
+  $('sceneTag').textContent='居中落点 · 精准连击 · 稳稳向上';assess();spawn();updateUI(true);accumulator=0;lastNow=performance.now();
+  toast('轻点画面或按空格，释放小屋',3);
+}
+function drop(){
+  if(paused||state!=='aiming'||!active)return;unlockAudio();
+  state='falling';active.vy=-24;active.prevX=active.x;active.prevY=active.y;dropSerial++;tone(180,.08,'sine',.023);
+  UI.drop.disabled=true;UI.drop.textContent='小屋下落中…';
+}
+function onLand(){
+  const b=active;let lx=localDropX(b.x);const support=blocks.length?blocks[blocks.length-1]:null;
+  const sx=support?support.x:0,sw=support?support.w:BASE_W;
+  const overlap=Math.min(lx+b.w/2,sx+sw/2)-Math.max(lx-b.w/2,sx-sw/2);
+  if(overlap<=1){beginMiss();return;}
+  const offset=lx-sx,perfect=Math.abs(offset)<=Math.max(2.3,b.w*.032);
+  if(perfect)lx=sx;
+  const landed={x:lx,y:topY()+b.h/2,w:b.w,h:b.h,level:b.level,sprite:b.sprite};
+  blocks.push(landed);active=null;state='settling';settleTime=0;unstableTime=0;
+  pendingAward={perfect,precision:clamp(1-Math.abs(offset)/(sw*.5),0,1),block:landed};
+  // 小幅弹性摆动同样参与重心投影；完美居中不产生偏心冲量。
+  swayV+=clamp(offset/(sw*.5),-1,1)*.035/(1+blocks.length*.035);
+  // 去掉装饰性镜头震动；真正参与重心计算的 sway 摆动仍保留。
+  if(blocks.length>48)blocks[blocks.length-49].sprite=null;
+  rebuildJoints();assess();emitLanding(landed,perfect);tone(115,.09,'triangle',.035);
+  UI.drop.textContent='正在检查平衡…';
+}
+function award(){
+  if(!pendingAward)return;const p=pendingAward;combo=p.perfect?combo+1:0;
+  const gain=100+Math.round(100*p.precision)+(p.perfect?Math.min(combo,10)*25:0);
+  score+=gain;floors++;
+  floatText(p.perfect?(combo>1?'精准 ×'+combo+'  +'+gain:'精准落点  +'+gain):'稳稳接住  +'+gain,p.block.x,p.block.y+45,p.perfect?MINT:GOLD);
+  landingSound(p.perfect);pendingAward=null;
+  if(floors%10===0)toast('第 '+floors+' 层 · 小屋更窄了，保持平衡',2.7);
+  updateUI(true);spawn();
+}
+function beginMiss(){
+  towerDirty=true;failureType='miss';failedReason='这一层落空了。下一次，让小屋多留一点在支撑上。';
+  const b=active;b.angle=0;b.av=(b.x>topX()?1:-1)*.7;b.vx=(b.x>topX()?1:-1)*18;
+  pieces=[b];active=null;state='collapsing';collapseTime=0;collapse=null;combo=0;pendingAward=null;
+  tone(130,.4,'triangle',.05);UI.drop.disabled=true;UI.drop.textContent='这一层没接住';toast('落空了',1.4);updateUI(true);
+}
+function beginCollapse(index){
+  towerDirty=true;const j=joints.find(j=>j.index===index)||joints[joints.length-1];if(!j)return;
+  failureType='balance';failedReason='第 '+(index+1)+' 层接缝上方的整体重心，越过了支撑边缘。';
+  const force=j.mx+Math.tan(sway)*(j.my-j.y),dir=force>(j.left+j.right)*.5?1:-1;
+  const px=dir>0?j.right:j.left,py=j.y,group=blocks.splice(index);
+  let mass=0,mx=0,my=0,inertia=0;
+  for(const b of group){const m=b.w*b.h;mass+=m;mx+=b.x*m;my+=b.y*m;inertia+=m*((b.x-px)**2+(b.y-py)**2+(b.w*b.w+b.h*b.h)/12);}
+  collapse={group,px,py,angle:sway,prevAngle:sway,av:dir*.18,dir,mass,dx:mx/mass-px,dy:my/mass-py,inertia,time:0,released:false};
+  sway=prevSway=swayV=0;state='collapsing';collapseTime=0;combo=0;pendingAward=null;active=null;
+  shake=0;
+  UI.drop.disabled=true;UI.drop.textContent='重心失守';
+  floatText('重心越界',px,py+40,RED);tone(95,.65,'sawtooth',.024);tone(65,.8,'triangle',.04,.1);toast('第 '+(index+1)+' 层支撑失稳',1.8);updateUI(true);
+}
+function releaseCollapse(){
+  const c=collapse;if(!c||c.released)return;c.released=true;
+  const co=Math.cos(c.angle),si=Math.sin(c.angle);
+  for(const b of c.group){const dx=b.x-c.px,dy=b.y-c.py;const x=c.px+dx*co+dy*si,y=c.py+dy*co-dx*si;
+    // 远离视口的坍塌碎块不再模拟，避免超高楼层时产生大量无用刚体。
+    const sy=groundSY-(y-camera)*scale;
+    if(sy>-300&&sy<ch+350)pieces.push({...b,x,y,prevX:x,prevY:y,vx:c.av*(-dx*si+dy*co)+(rand()-.5)*16,vy:c.av*(-dy*si-dx*co),angle:c.angle,av:c.av*(.8+rand()*.35),rest:false});
+  }
+  for(let i=0;i<(reducedMotion?4:QUALITY[saved.quality].particles);i++)addParticle(c.px,c.py,(rand()-.5)*200,rand()*190,rand()>.5?GOLD:MINT,1+rand()*3,.7+rand()*.8);
+}
+function finish(){
+  towerDirty=true;state='result';paused=false;newRecord=score>saved.best;if(newRecord)saved.best=score;saved.bestFloors=Math.max(saved.bestFloors,floors);save();UI.best.textContent=number(saved.best);
+  $('resultScore').textContent=number(score);$('resultFloors').textContent=String(floors);$('resultTitle').textContent=failureType==='miss'?'没接住这一层':'重心失守';$('resultReason').textContent=failedReason;
+  $('recordTag').classList.toggle('hidden',!newRecord);$('resultEyebrow').classList.toggle('hidden',newRecord);UI.result.classList.remove('hidden');UI.pause.disabled=true;UI.drop.disabled=false;UI.drop.textContent='再筑一座 ↗';$('restartBtn').focus({preventScroll:true});
+}
+function home(){towerDirty=true;wake();clearTimeout(toastTimer);state='menu';paused=false;camera=prevCamera=0;sway=prevSway=swayV=0;blocks=[];joints=[];pieces=[];collapse=null;active=null;particles.forEach(p=>p.life=0);floaters.forEach(p=>p.life=0);UI.hero.classList.remove('hidden');UI.label.classList.remove('hidden');UI.hud.classList.add('hidden');UI.monitor.classList.add('hidden');UI.result.classList.add('hidden');UI.pauseOverlay.classList.add('hidden');UI.helpOverlay.classList.add('hidden');UI.pause.disabled=true;UI.drop.disabled=false;UI.drop.textContent='开始建造 ↗';centerX=cw*(cw>650?.69:.60);$('sceneTag').textContent='慢一点，稳一点，再高一点。';UI.toast.classList.remove('show');UI.stage.classList.remove('has-toast');toastTime=0;}
+function pause(){if(paused||!['aiming','falling','settling','collapsing'].includes(state))return;paused=true;wake();UI.pauseOverlay.classList.remove('hidden');UI.drop.disabled=true;$('resumeBtn').focus({preventScroll:true});}
+function resume(){if(!paused)return;paused=false;wake();UI.pauseOverlay.classList.add('hidden');UI.drop.disabled=state!=='aiming';lastNow=performance.now();accumulator=0;unlockAudio();}
+function openHelp(){helpWasPaused=paused;wake();if(state!=='menu'&&state!=='result')paused=true;UI.helpOverlay.classList.remove('hidden');UI.drop.disabled=true;$('helpCloseBtn').focus({preventScroll:true});}
+function closeHelp(){wake();UI.helpOverlay.classList.add('hidden');paused=helpWasPaused;lastNow=performance.now();accumulator=0;UI.drop.disabled=paused||(!['menu','result','aiming'].includes(state));}
+
+const uiCache={};
+function setText(el,key,value){if(uiCache[key]!==value){el.textContent=value;uiCache[key]=value;}}
+function updateUI(force=false){
+  if(!force&&state==='menu')return;
+  setText(UI.score,'score',number(score));setText(UI.floors,'floors',String(floors));setText(UI.height,'height',String(floors*3));
+  setText(UI.combo,'combo','精准 × '+combo+' · 连击加分');if(uiCache.comboOff!==(combo<1)){UI.combo.classList.toggle('off',combo<1);uiCache.comboOff=combo<1;}
+  const bad=state==='collapsing'||state==='result';const val=bad?0:Math.round(stability.safety*100);const col=val<15?RED:val<38?GOLD:MINT;
+  const word=bad?'结构失稳':val<15?'危险边缘':val<38?'重心偏移':val<68?'保持平衡':'稳如磐石';
+  setText(UI.word,'word',failureType==='miss'&&bad?'落点偏离':word);setText(UI.value,'value',String(val));
+  if(uiCache.meter!==val){UI.fill.style.transform='scaleX('+(val/100)+')';UI.fill.style.background=col;UI.word.style.color=col;uiCache.meter=val;}
+  setText(UI.joint,'joint',stability.index<0?'基础稳固 · 等待第一层':'最弱支撑 · 第 '+(stability.index+1)+' 层接缝');
+}
+
+function update(dt){
+  stats.physicsSteps++;
+  if(state==='menu')return;
+  simTime+=dt;prevCamera=camera;prevSway=sway;
+  if(state!=='collapsing'&&state!=='result'){
+    const targetScreen=Math.min(ch-80,Math.max(ch*.59,265));
+    const target=Math.max(0,topY()-(groundSY-targetScreen)/scale);camera+=(target-camera)*CAMERA_EASE;if(Math.abs(target-camera)<.005)camera=target;
+    swayV+=(-34*sway-8.5*swayV)*dt;sway=clamp(sway+swayV*dt,-.023,.023);
+    if(Math.abs(sway)<.000001&&Math.abs(swayV)<.000005)sway=swayV=0;
+  }
+  shake*=Math.exp(-12*dt);
+  if(state==='aiming'&&active){
+    const b=active;b.prevX=b.x;b.prevY=b.y;b.phase+=dt*b.speed;b.x=b.cx+Math.sin(b.phase)*b.amplitude;
+    const sy=Math.max(cw<650?155:142,ch*.245),targetY=Math.max(topY()+100,camera+(groundSY-sy)/scale);b.y+=(targetY-b.y)*AIM_EASE;if(Math.abs(targetY-b.y)<.005)b.y=targetY;
+    if(saved.guide){predictionTime-=dt;if(predictionTime<=0){predictAt(snappedX(localDropX(b.x),b.w),b.w,prediction);predictionTime=.1;}}
+  }else if(state==='falling'&&active){
+    const b=active;b.prevX=b.x;b.prevY=b.y;b.vy-=GRAVITY*dt;b.y+=b.vy*dt;
+    const localX=localDropX(b.x),surface=topY()*Math.cos(sway)-localX*Math.sin(sway);
+    if(b.y-b.h/2<=surface)onLand();
+  }
+  if(state==='settling'||state==='aiming'||state==='falling'){
+    if(Math.abs(sway-lastSwayEval)>.000003)assess();
+    if(stability.margin<-.35){unstableTime+=dt;if(unstableTime>.14)beginCollapse(stability.index);}else unstableTime=Math.max(0,unstableTime-dt*2);
+    if(state==='settling'){settleTime+=dt;if(settleTime>=.44&&stability.margin>=-.35)award();}
+  }
+  if(state==='collapsing'){
+    collapseTime+=dt;
+    if(collapse&&!collapse.released){const c=collapse;c.prevAngle=c.angle;c.time+=dt;
+      const arm=c.dx*Math.cos(c.angle)+c.dy*Math.sin(c.angle),torque=GRAVITY*c.mass*arm;
+      c.av+=clamp(torque/c.inertia,-9,9)*dt;c.angle+=c.av*dt;
+      if(Math.abs(c.angle)>.6||c.time>1.1)releaseCollapse();
+    }
+    if(collapseTime>2.05)finish();
+  }
+  if(state==='collapsing'||state==='result'){
+    for(let i=pieces.length-1;i>=0;i--){const p=pieces[i];if(p.rest)continue;p.prevX=p.x;p.prevY=p.y;p.vy-=GRAVITY*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.angle+=p.av*dt;
+      const radius=Math.abs(Math.sin(p.angle))*p.w/2+Math.abs(Math.cos(p.angle))*p.h/2;
+      if(p.y-radius<-22){p.y=-22+radius;p.vy=-p.vy*.19;p.vx*=.69;p.av*=.61;if(Math.abs(p.vy)<22){p.vy=0;p.vx=0;p.av=0;p.rest=true;}}
+      if(p.y<camera-(ch-groundSY)/scale-250||Math.abs(p.x)>cw/scale+300)pieces.splice(i,1);
+    }
+  }
+  for(const p of particles)if(p.life>0){p.life-=dt;p.vy-=280*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;}
+  for(const p of floaters)if(p.life>0){p.life-=dt;p.y+=20*dt;}
+  uiTime-=dt;if(uiTime<=0){updateUI();uiTime=.125;}
+}
+
+function paintBackground(force=false){
+  const visibleOffset=Math.min(camera*scale,Math.max(0,(ch-groundSY+170)/.09));
+  if(!force&&Number.isFinite(backgroundCamera)&&Math.abs(visibleOffset-backgroundCamera)<6)return;
+  backgroundCamera=visibleOffset;stats.backgroundPaints++;
+  const previous=ctx;ctx=backgroundCtx;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.globalAlpha=1;
+  ctx.drawImage(sky,0,0,cw,ch);
+  const farY=groundSY+visibleOffset*.09-139,nearY=groundSY+visibleOffset*.18-150;
+  if(farY<ch)ctx.drawImage(cityFar,0,Math.round(farY),cw,160);
+  if(nearY<ch)ctx.drawImage(cityNear,0,Math.round(nearY),cw,190);
+  ctx.fillStyle='#b5d0c306';roundRect(ctx,cw*.12,ch*.25,cw*.15,5,3);ctx.fill();roundRect(ctx,cw*.63,ch*.34,cw*.12,4,2);ctx.fill();
+  ctx=previous;
+}
+function paintTower(a){
+  const moving=Math.abs(camera-towerCamera)*scale>.16||Math.abs(a-towerSway)*Math.max(200,topY())*scale>.16;
+  const mode=state==='menu'?'menu':(state==='collapsing'||state==='result')?'failed':'live';
+  if(!towerDirty&&!moving&&towerState===mode)return;
+  towerDirty=false;towerCamera=camera;towerSway=a;towerState=mode;stats.stackPaints++;
+  const previous=ctx;ctx=stackCtx;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,stackCanvas.width,stackCanvas.height);
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.globalAlpha=1;ctx.setLineDash([]);
+  if(state==='menu')drawDemo();
+  else{drawHeightRuler();drawFoundation();drawStack(a);drawStructureGuide(a);}
+  ctx=previous;
+}
+function drawHeightRuler(){
+  if(state==='menu')return;const rx=centerX+Math.min(cw*.35,220*scale),start=Math.max(0,Math.floor((camera-120)/200));
+  ctx.save();ctx.font='9px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';ctx.textAlign='left';ctx.fillStyle='#94b4b066';ctx.strokeStyle='#9ebdb021';ctx.lineWidth=1;
+  for(let i=start;i<start+16;i++){const y=groundSY-(i*200-camera)*scale;if(y<40||y>ch-20)continue;ctx.beginPath();ctx.moveTo(rx,y);ctx.lineTo(rx+17,y);ctx.stroke();ctx.fillText((i*15)+' m',rx+24,y+3);}
+  ctx.restore();
+}
+function drawFoundation(){
+  const p=toScreen(0,0);if(p.y>ch+80||p.y<-80)return;
+  ctx.save();ctx.translate(p.x,p.y);ctx.scale(scale,scale);
+  ctx.fillStyle='#132d35';ctx.fillRect(-cw/scale,-(-22),cw*2/scale,150);
+  ctx.strokeStyle='#789e8e27';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-cw/scale,23);ctx.lineTo(cw/scale,23);ctx.stroke();
+  ctx.fillStyle='#0a222c55';ctx.beginPath();ctx.ellipse(0,23,140,10,0,0,TAU);ctx.fill();
+  ctx.fillStyle='#667f78';roundRect(ctx,-BASE_W/2,-1,BASE_W,18,3);ctx.fill();ctx.fillStyle='#b2c8b1';roundRect(ctx,-BASE_W/2-4,-4,BASE_W+8,7,3);ctx.fill();
+  ctx.fillStyle='#405b59';ctx.fillRect(-BASE_W/2+7,9,BASE_W-14,7);ctx.fillStyle='#88a393';for(let i=-90;i<100;i+=28)ctx.fillRect(i,7,16,2);
+  for(const dir of[-1,1]){const bx=dir*139;ctx.strokeStyle='#61796a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(bx,21);ctx.lineTo(bx,4);ctx.stroke();ctx.fillStyle=dir<0?'#547d66':'#73937a';ctx.beginPath();ctx.ellipse(bx,3,10,15,dir*.25,0,TAU);ctx.fill();ctx.fillStyle='#284a42';ctx.beginPath();ctx.ellipse(bx+dir*11,14,10,8,0,0,TAU);ctx.fill();}
+  ctx.restore();
+}
+function drawStack(a){
+  if(!blocks.length)return;ctx.save();ctx.translate(centerX,groundSY+camera*scale);ctx.rotate(a);ctx.scale(scale,scale);
+  // 楼层高度一致，可直接计算视口的候选下标；只画可见纹理。
+  const lower=Math.max(0,Math.floor((camera-(ch-groundSY)/scale-100)/FLOOR_H));
+  const upper=Math.min(blocks.length,Math.ceil((camera+groundSY/scale+100)/FLOOR_H));
+  for(let i=lower;i<upper;i++)drawLocalModule(blocks[i]);ctx.restore();
+}
+function drawStructureGuide(a){
+  if(!saved.guide||!blocks.length||state==='collapsing'||state==='result')return;
+  const s=stability,col=s.safety<.15?RED:s.safety<.38?GOLD:MINT;
+  const rotated=rotatePoint(s.forceX,s.y,a),jointScreen=toScreen(rotated.x,rotated.y);
+  ctx.save();ctx.translate(centerX,groundSY+camera*scale);ctx.rotate(a);ctx.scale(scale,scale);
+  ctx.globalAlpha=.76;ctx.strokeStyle=col;ctx.lineWidth=1/scale;ctx.setLineDash([3/scale,5/scale]);ctx.beginPath();ctx.moveTo(s.comX,-s.comY);ctx.lineTo(s.forceX,-s.y);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle=col;ctx.lineWidth=3/scale;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(s.left,-s.y);ctx.lineTo(s.right,-s.y);ctx.stroke();
+  ctx.globalAlpha=1;ctx.fillStyle='#15303a';ctx.beginPath();ctx.arc(s.comX,-s.comY,5/scale,0,TAU);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=1.5/scale;ctx.stroke();ctx.fillStyle=col;ctx.beginPath();ctx.arc(s.comX,-s.comY,1.6/scale,0,TAU);ctx.fill();ctx.restore();
+  if(jointScreen.y>ch-24){ctx.save();ctx.fillStyle=col;ctx.font='10px -apple-system,"Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.globalAlpha=.8;ctx.fillText('↓ 最弱接缝位于画面下方',centerX,ch-38);ctx.restore();}
+}
+function drawAim(b,a,interp){
+  const x=lerp(b.prevX,b.x,interp),y=lerp(b.prevY,b.y,interp),p=toScreen(x,y);
+  includeDamage(p.x-30*scale-6,0,60*scale+12,Math.max(0,p.y+30*scale+8));
+  if(saved.guide){
+    let lx=snappedX(localDropX(x),b.w);const ly=topY()+FLOOR_H/2;const q=rotatePoint(lx,ly,a),sp=toScreen(q.x,q.y);
+    const col=!prediction.safe?RED:prediction.safety<.3?GOLD:MINT;
+    const radius=(b.w+b.h)*scale*.55+10;includeDamage(Math.min(p.x,sp.x-radius)-6,Math.min(p.y,sp.y-radius)-6,Math.max(p.x,sp.x+radius)-Math.min(p.x,sp.x-radius)+12,Math.abs(sp.y-p.y)+radius*2+12);
+    ctx.save();ctx.strokeStyle=col;ctx.globalAlpha=.36;ctx.lineWidth=1;ctx.setLineDash([3,7]);ctx.beginPath();ctx.moveTo(p.x,p.y+b.h/2*scale+6);ctx.lineTo(sp.x,sp.y-b.h/2*scale);ctx.stroke();
+    ctx.translate(sp.x,sp.y);ctx.rotate(a);ctx.globalAlpha=.40;ctx.setLineDash([4,4]);roundRect(ctx,-b.w/2*scale,-b.h/2*scale,b.w*scale,b.h*scale,3);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=.06;ctx.fillStyle=col;ctx.fill();ctx.restore();
+  }
+  // 吊索在释放后立即消失，不影响落体运动。
+  ctx.save();ctx.strokeStyle='#bdd0bc3d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.x-12*scale,-5);ctx.lineTo(p.x-12*scale,p.y-b.h/2*scale-6);ctx.moveTo(p.x+12*scale,-5);ctx.lineTo(p.x+12*scale,p.y-b.h/2*scale-6);ctx.stroke();
+  ctx.fillStyle='#c9dcc0';roundRect(ctx,p.x-20*scale,p.y-b.h/2*scale-8*scale,40*scale,4*scale,2);ctx.fill();ctx.restore();
+  drawModule(b,x,y);
+}
+function drawDemo(){
+  const compact=cw<650,oldScale=scale,oldGround=groundSY;
+  if(compact){scale*=ch<580?.67:.86;groundSY=ch-53;}
+  ctx.save();ctx.translate(centerX,groundSY);ctx.scale(scale,scale);for(const b of demoBlocks)drawLocalModule(b);ctx.restore();
+  const b={x:Math.sin(menuTime*.82)*62+4,y:326,w:widthAt(7),h:FLOOR_H,level:6};
+  const p=toScreen(b.x,b.y);ctx.strokeStyle='#b9edcd28';ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.beginPath();ctx.moveTo(p.x,p.y+24*scale);ctx.lineTo(p.x,groundSY-240*scale);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle='#cbd9c629';ctx.beginPath();ctx.moveTo(p.x-10*scale,Math.max(0,p.y-95*scale));ctx.lineTo(p.x-10*scale,p.y-24*scale);ctx.moveTo(p.x+10*scale,Math.max(0,p.y-95*scale));ctx.lineTo(p.x+10*scale,p.y-24*scale);ctx.stroke();
+  ctx.fillStyle='#c9dcc0';roundRect(ctx,p.x-19*scale,p.y-26*scale,38*scale,4*scale,2);ctx.fill();drawModule(b);
+  // 示范塔的地基与其共用缩放，避免移动端出现悬空。
+  drawFoundation();scale=oldScale;groundSY=oldGround;
+  if(cw>850){ctx.save();ctx.strokeStyle='#9dbcb94d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(centerX+97*scale,groundSY-147*scale);ctx.lineTo(centerX+135*scale,groundSY-160*scale);ctx.lineTo(centerX+171*scale,groundSY-160*scale);ctx.stroke();ctx.font='9px -apple-system,"Microsoft YaHei",sans-serif';ctx.fillStyle='#abc5bd';ctx.fillText('找到平衡，就能向上。',centerX+117*scale,groundSY-170*scale);ctx.restore();}
+}
+function drawCollapse(interp){
+  const c=collapse;
+  if(c&&!c.released){
+    const angle=lerp(c.prevAngle,c.angle,interp),co=Math.cos(angle),si=Math.sin(angle);
+    for(const b of c.group){
+      const dx=b.x-c.px,dy=b.y-c.py;
+      drawModule(b,c.px+dx*co+dy*si,c.py+dy*co-dx*si,angle);
+    }
+  }
+  for(const p of pieces)drawModule(p,lerp(p.prevX??p.x,p.x,interp),lerp(p.prevY??p.y,p.y,interp),p.angle);
+}
+function render(interp=1){
+  clearEffects();ctx=effectsCtx;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.globalAlpha=1;ctx.setLineDash([]);
+  const currentCamera=camera;camera=lerp(prevCamera,camera,interp);const a=lerp(prevSway,sway,interp);
+  paintBackground();paintTower(a);
+  if(state==='menu'){camera=currentCamera;return;}
+  if(active){if(state==='aiming')drawAim(active,a,interp);else drawModule(active,lerp(active.prevX,active.x,interp),lerp(active.prevY,active.y,interp));}
+  drawCollapse(interp);
+  for(const p of particles)if(p.life>0){
+    const x=centerX+p.x*scale,y=groundSY-(p.y-camera)*scale;if(y<-10||y>ch+10)continue;
+    ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.col;ctx.fillRect(x-p.size/2,y-p.size/2,p.size,p.size);includeDamage(x-p.size/2-2,y-p.size/2-2,p.size+4,p.size+4);
+  }
+  for(const f of floaters)if(f.life>0&&f.sprite){
+    const x=centerX+f.x*scale-f.sw/2,y=groundSY-(f.y-camera)*scale-f.sh/2;
+    ctx.globalAlpha=Math.min(1,f.life*2);ctx.drawImage(f.sprite,Math.round(x),Math.round(y),f.sw,f.sh);includeDamage(x-3,y-3,f.sw+6,f.sh+6);
+  }
+  ctx.globalAlpha=1;camera=currentCamera;
+}
+
+function frame(now){
+  rafId=0;if(document.hidden){lastNow=0;return;}
+  const resized=resizePending;if(resized)resize();
+  if(!lastNow)lastNow=now;
+  const rawDt=Math.max(0,(now-lastNow)/1000);lastNow=now;
+  const frozen=isFrozen();
+  if(!frozen){
+    accumulator+=Math.min(STEP*MAX_CATCHUP,rawDt);
+    let steps=0;
+    while(accumulator>=STEP&&steps<MAX_CATCHUP){update(STEP);accumulator-=STEP;steps++;}
+    if(steps===MAX_CATCHUP&&accumulator>=STEP)accumulator%=STEP;
+  }else accumulator=0;
+  render(frozen?1:clamp(accumulator/STEP,0,1));stats.frames++;
+  if(!frozen){
+    if(!fpsStart)fpsStart=now;fpsFrames++;
+    if(now-fpsStart>=1000){setText(UI.fps,'fps',String(Math.round(fpsFrames*1000/(now-fpsStart))));fpsFrames=0;fpsStart=now;}
+    // 仅持续掉帧才降采样，忽略切回前台、调整窗口等孤立的长帧；从不改变重心规则。
+    if(!resized&&rawDt>0&&rawDt<.15){
+      averageMs=lerp(averageMs,rawDt*1000,.06);
+      slowTime=averageMs>22?slowTime+rawDt:Math.max(0,slowTime-rawDt*2);
+      if(slowTime>1.4&&dpr>.62&&now-lastQualityChange>2500){
+        qualityDpr=Math.max(.6,dpr*.8);resizePending=true;lastQualityChange=now;slowTime=0;averageMs=16.67;
+      }
+    }
+  }else{setText(UI.fps,'fps','—');fpsStart=0;fpsFrames=0;}
+  if(!isFrozen())wake();
+}
+
+// 输入只接受一次释放；长按/重复按键不会跳过楼层。
+canvas.addEventListener('pointerdown',e=>{if(e.button!==undefined&&e.button!==0)return;e.preventDefault();if(state==='aiming')drop();});
+$('startBtn').addEventListener('click',start);$('restartBtn').addEventListener('click',start);$('pauseRestartBtn').addEventListener('click',start);$('homeBtn').addEventListener('click',home);
+UI.drop.addEventListener('click',()=>{if(state==='menu'||state==='result')start();else drop();});
+UI.pause.addEventListener('click',()=>paused?resume():pause());$('resumeBtn').addEventListener('click',resume);
+UI.sound.addEventListener('click',toggleSound);UI.guide.addEventListener('click',toggleGuide);$('qualityBtn').addEventListener('click',toggleQuality);$('helpBtn').addEventListener('click',openHelp);$('helpCloseBtn').addEventListener('click',closeHelp);
+window.addEventListener('keydown',e=>{
+  if(e.repeat)return;const key=e.key.toLowerCase();
+  if(key==='tab'){
+    const layer=!UI.helpOverlay.classList.contains('hidden')?UI.helpOverlay:!UI.pauseOverlay.classList.contains('hidden')?UI.pauseOverlay:!UI.result.classList.contains('hidden')?UI.result:null;
+    if(layer){const f=layer.querySelectorAll('button:not(:disabled)'),first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}return;
+  }
+  if(!UI.helpOverlay.classList.contains('hidden')){if(key==='escape'||key===' '||key==='enter'){e.preventDefault();closeHelp();}return;}
+  if(key===' '||key==='arrowdown'){e.preventDefault();if(paused)return;if(state==='menu'||state==='result')start();else drop();}
+  else if(key==='escape'||key==='p'){e.preventDefault();paused?resume():pause();}
+  else if(key==='r'&&state!=='menu'){e.preventDefault();start();}
+  else if(key==='m')toggleSound();else if(key==='g')toggleGuide();else if(key==='q')toggleQuality();
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){pause();if(rafId){cancelAnimationFrame(rafId);rafId=0;}if(audio&&audio.state==='running')audio.suspend().catch(()=>{});}
+  else{lastNow=performance.now();fpsStart=0;fpsFrames=0;wake();}
+});
+window.addEventListener('blur',()=>{if(UI.helpOverlay.classList.contains('hidden'))pause();});
+function requestResize(){resizePending=true;wake();}
+window.addEventListener('resize',requestResize);
+if('ResizeObserver'in window)new ResizeObserver(requestResize).observe(UI.stage);
+refreshSettings();resize();wake();
+
+// 仅 ?test=1 时开放确定性测试入口，正常打开不暴露游戏状态。
+if(new URLSearchParams(location.search).get('test')==='1'){
+  window.__SKYLINE_TEST__={
+    start,drop,pause,resume,home,toggleQuality,toggleGuide,openHelp,closeHelp,
+    stats:()=>({...stats,rafScheduled:!!rafId}),
+    snapshot:()=>({state,paused,score,floors,combo,width:active?.w,active:active?{x:active.x,y:active.y}:null,blocks:blocks.map(b=>({x:b.x,y:b.y,w:b.w})),stability:{...stability},failureType,failedReason,texCount:texCache.size,particles:particles.filter(p=>p.life>0).length,cw,ch,dpr,quality:QUALITY[saved.quality].name,step:STEP}),
+    placeAt:x=>{if(state!=='aiming')throw Error('not aiming');active.x=x;active.prevX=x;drop();},
+    advance:seconds=>{for(let i=0;i<Math.round(seconds/STEP);i++)if(!paused)update(STEP);lastNow=performance.now();accumulator=0;render(1);},
+    predict:(x,w=active?.w||widthAt(blocks.length))=>predictAt(x,w),
+    render:()=>render(1),
+    physicsCheck:spec=>{const oldBlocks=blocks,oldJoints=joints,oldSway=sway,oldState=stability;stability={...stability};blocks=spec.map((b,i)=>({...b,y:i*FLOOR_H+FLOOR_H/2,h:FLOOR_H,level:i}));joints=[];sway=0;rebuildJoints();assess();const out={...stability};blocks=oldBlocks;joints=oldJoints;sway=oldSway;stability=oldState;lastSwayEval=99;return out;}
+  };
+}
+})();
+</script>
+
 </body>
 </html>
