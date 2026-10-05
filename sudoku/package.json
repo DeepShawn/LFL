@@ -1,0 +1,11 @@
+{
+  "name": "sudoku-archive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node tools/generate-puzzles.mjs",
+    "test:unit": "node --test tests/engine.test.mjs",
+    "test:browser": "node --test tests/browser.test.mjs"
+  }
+}
