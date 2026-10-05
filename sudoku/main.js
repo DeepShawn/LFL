@@ -4,7 +4,7 @@ import {
   explainLogicalStep,
   findAllConflicts,
   findLogicalStep,
-  findUnitSingleSteps,
+  findForcedUnitStep,
   formatTime,
   getCandidates,
   getConflicts,
@@ -72,7 +72,9 @@ const elements = {
 let progress = loadProgress();
 let selectedIndex = -1;
 let highlightedDigit = 0;
+let forcedDigit = 0;
 let game = null;
+let boardCells = [];
 let timerId = null;
 let toastId = null;
 
@@ -239,13 +241,30 @@ function cellLabel(index, value, notes) {
   return `第 ${row} 行，第 ${column} 列，${notes.length ? `笔记 ${notes.join('、')}` : '空白'}`;
 }
 
+function createBoard() {
+  boardCells = Array.from({ length: 81 }, (_, index) => {
+    const cell = document.createElement('button');
+    const row = Math.floor(index / 9);
+    const column = index % 9;
+    cell.type = 'button';
+    cell.dataset.index = String(index);
+    cell.setAttribute('role', 'gridcell');
+    cell.className = ['cell', column % 3 === 2 && column !== 8 && 'box-right', row % 3 === 2 && row !== 8 && 'box-bottom'].filter(Boolean).join(' ');
+    elements.board.append(cell);
+    return cell;
+  });
+  elements.board.addEventListener('click', (event) => {
+    const cell = event.target.closest('.cell');
+    if (cell) selectCell(Number(cell.dataset.index));
+  });
+}
+
 function renderBoard() {
-  elements.board.replaceChildren();
   const conflictIndexes = new Set(findAllConflicts(game.grid));
   const selectedValue = selectedIndex >= 0 ? game.grid[selectedIndex] : 0;
-  const activeDigit = selectedValue || highlightedDigit;
+  const activeDigit = selectedValue || forcedDigit || highlightedDigit;
   for (let index = 0; index < 81; index += 1) {
-    const cell = document.createElement('button');
+    const cell = boardCells[index];
     const given = Boolean(game.puzzleGrid[index]);
     const value = game.grid[index];
     const notes = game.notes[index];
@@ -254,21 +273,20 @@ function renderBoard() {
     const sameRow = selectedIndex >= 0 && row === Math.floor(selectedIndex / 9);
     const sameColumn = selectedIndex >= 0 && column === selectedIndex % 9;
     const selectedBox = selectedIndex >= 0 && Math.floor(row / 3) === Math.floor(Math.floor(selectedIndex / 9) / 3) && Math.floor(column / 3) === Math.floor((selectedIndex % 9) / 3);
-    cell.type = 'button';
     cell.className = [
       'cell',
       given && 'is-given',
       index === selectedIndex && 'is-selected',
+      index === selectedIndex && forcedDigit && 'is-forced',
       index !== selectedIndex && (sameRow || sameColumn || selectedBox) && 'is-peer',
       activeDigit && value === activeDigit && 'is-number-highlight',
       conflictIndexes.has(index) && 'is-conflict',
       column % 3 === 2 && column !== 8 && 'box-right',
       row % 3 === 2 && row !== 8 && 'box-bottom',
     ].filter(Boolean).join(' ');
-    cell.dataset.index = String(index);
-    cell.setAttribute('role', 'gridcell');
     cell.setAttribute('aria-selected', String(index === selectedIndex));
     cell.setAttribute('aria-label', cellLabel(index, value, notes));
+    cell.replaceChildren();
     if (value) {
       cell.textContent = value;
     } else {
@@ -281,8 +299,6 @@ function renderBoard() {
       });
       cell.append(noteGrid);
     }
-    cell.addEventListener('click', () => selectCell(index));
-    elements.board.append(cell);
   }
 }
 
@@ -351,6 +367,7 @@ function selectCell(index) {
   if (game.paused) return;
   if (selectedIndex === index) {
     selectedIndex = -1;
+    forcedDigit = 0;
     highlightedDigit = 0;
     elements.selectionHint.textContent = '已取消单元格选择。点击数字可高亮盘面。';
     renderBoard();
@@ -359,13 +376,17 @@ function selectCell(index) {
   }
   selectedIndex = index;
   highlightedDigit = 0;
+  const forcedStep = findForcedUnitStep(game.grid, index);
+  forcedDigit = forcedStep?.value || 0;
   const given = Boolean(game.puzzleGrid[index]);
   const candidates = game.grid[index] ? [] : getCandidates(game.grid, index);
   elements.selectionHint.textContent = given
     ? '这是题目线索，不能修改。'
-    : game.notesMode
-      ? `笔记候选：${candidates.join('、') || '无'}`
-      : `第 ${Math.floor(index / 9) + 1} 行 · 第 ${(index % 9) + 1} 列`;
+    : forcedDigit
+      ? `这个单位只剩一个空位，应填 ${forcedDigit}。`
+      : game.notesMode
+        ? `笔记候选：${candidates.join('、') || '无'}`
+        : `第 ${Math.floor(index / 9) + 1} 行 · 第 ${(index % 9) + 1} 列`;
   elements.selectionHint.classList.remove('is-error', 'is-success');
   renderBoard();
   renderKeypad();
@@ -382,18 +403,6 @@ function placeValue(index, value) {
   game.grid[index] = value;
   game.notes[index] = [];
   removePeerNote(value, index);
-}
-
-function applyAutoSingles() {
-  const applied = [];
-  while (true) {
-    const step = findUnitSingleSteps(game.grid).find(({ index }) => !game.grid[index]);
-    if (!step) break;
-    const explanation = explainLogicalStep(step, game.grid);
-    placeValue(step.index, step.value);
-    applied.push({ step, explanation });
-  }
-  return applied;
 }
 
 function commitValue(value) {
@@ -422,14 +431,9 @@ function commitValue(value) {
     return;
   }
   placeValue(selectedIndex, value);
-  const autoSteps = applyAutoSingles();
-  if (autoSteps.length) {
-    selectedIndex = -1;
-    const first = autoSteps[0].explanation;
-    setLogic(`自动补位 · ${first.kindLabel}`, first.title, [first.summary, ...first.details.slice(1), autoSteps.length > 1 ? `连锁补齐 ${autoSteps.length} 个只剩一格的单位。` : '填入后已取消单元格选择。']);
-    elements.selectionHint.textContent = `已按行列宫规则自动补齐 ${autoSteps.length} 格。`;
-    elements.selectionHint.classList.remove('is-error');
-  }
+  selectedIndex = -1;
+  forcedDigit = 0;
+  highlightedDigit = 0;
   saveGame();
   renderAll();
   if (isCompleteGrid(game.grid)) completeGame();
@@ -586,6 +590,7 @@ function openNext() {
 function loadGame() {
   stopTimer();
   selectedIndex = -1;
+  forcedDigit = 0;
   highlightedDigit = 0;
   game = freshGame(getPuzzle());
   renderAll();
@@ -637,6 +642,7 @@ function resetGame() {
   game.completed = false;
   game.paused = false;
   selectedIndex = -1;
+  forcedDigit = 0;
   highlightedDigit = 0;
   saveGame();
   renderAll();
@@ -746,5 +752,6 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('pagehide', saveGame);
+createBoard();
 applyTheme();
 renderMenu();

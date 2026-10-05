@@ -126,11 +126,36 @@ test('逻辑合法数字不会按标准答案被判错，冲突数字会被拦�
   }, candidate.index);
   assert.ok(peerValue);
   await page.locator('#clear-button').click();
+  assert.equal(await page.locator('#mistake-count').textContent(), '0');
+  await page.locator(`[data-index="${candidate.index}"]`).click();
   await page.locator(`[data-value="${peerValue}"]`).click();
   assert.equal(await page.locator('#mistake-count').textContent(), '1');
-  await page.locator('#check-button').click();
   assert.equal(await page.locator('.cell.is-conflict').count(), 0);
   assert.match(await page.locator('#selection-hint').textContent(), /冲突|重复/);
+  await page.close();
+});
+
+test('普通输入不会连锁自动填入其他单元格', async () => {
+  const page = await newGamePage();
+  const initialFilled = Number(await page.locator('#filled-count').textContent());
+  await page.locator('.cell:not(.is-given)').first().click();
+  const button = page.locator('#keypad button[data-value]').first();
+  await button.click();
+  const filled = Number(await page.locator('#filled-count').textContent());
+  assert.ok(filled === initialFilled || filled === initialFilled + 1);
+  await page.close();
+});
+
+test('棋盘节点复用，不因每次操作重建 81 个单元格', async () => {
+  const page = await newGamePage();
+  const stable = await page.evaluate(() => {
+    window.__boardCells = [...document.querySelectorAll('.cell')];
+    return window.__boardCells.length;
+  });
+  await page.locator('.cell:not(.is-given)').first().click();
+  await page.locator('[data-value="1"]').click();
+  assert.equal(stable, 81);
+  assert.equal(await page.evaluate(() => window.__boardCells.every((cell, index) => cell === document.querySelectorAll('.cell')[index])), true);
   await page.close();
 });
 

@@ -127,6 +127,24 @@ function getUnitMissingDigits(grid, unit) {
   return DIGITS.filter((value) => !present.has(value));
 }
 
+export function findForcedUnitStep(grid, index) {
+  if (grid[index]) return null;
+  for (const unit of UNITS) {
+    if (!unit.cells.includes(index)) continue;
+    const emptyCells = getUnitEmptyCells(grid, unit);
+    const missingDigits = getUnitMissingDigits(grid, unit);
+    if (emptyCells.length !== 1 || missingDigits.length !== 1 || !isValidMove(grid, index, missingDigits[0])) continue;
+    return {
+      kind: 'unit-single',
+      index,
+      value: missingDigits[0],
+      unit,
+      candidates: [missingDigits[0]],
+    };
+  }
+  return null;
+}
+
 export function findUnitSingleSteps(grid) {
   const steps = [];
   for (const unit of UNITS) {
