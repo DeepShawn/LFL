@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { findLogicalStep, parseGrid } from '../engine.js';
 
 const SIZE = 9;
 const CELL_COUNT = SIZE * SIZE;
@@ -123,9 +124,12 @@ async function main() {
     for (let level = 1; level <= 100; level += 1) {
       let generated = createPuzzle(random, config.clues);
       let attempts = 0;
-      while (generated.clues > config.clues && attempts < 12) {
+      while ((generated.clues > config.clues || !findLogicalStep(parseGrid(generated.puzzle))) && attempts < 100) {
         generated = createPuzzle(random, config.clues);
         attempts += 1;
+      }
+      if (generated.clues > config.clues || !findLogicalStep(parseGrid(generated.puzzle))) {
+        throw new Error(`无法为 ${config.id}-${level} 生成可提示题目`);
       }
       puzzles[config.id].push({
         id: `${config.id}-${String(level).padStart(3, '0')}`,

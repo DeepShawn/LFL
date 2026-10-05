@@ -9,112 +9,147 @@
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./main.js"></script>
 </head>
-<body>
+<body data-theme="night">
   <div class="grain" aria-hidden="true"></div>
-  <div class="app-shell" id="app-shell">
-    <header class="topbar">
-      <a class="wordmark" href="./" aria-label="九格档案首页">
-        <span class="wordmark-mark" aria-hidden="true">9</span>
-        <span><strong>九格档案</strong><small>SUDOKU ARCHIVE</small></span>
-      </a>
-      <div class="topbar-status">
-        <span class="status-dot" aria-hidden="true"></span>
-        <span id="save-status">本地进度已保存</span>
-      </div>
-      <div class="topbar-actions">
-        <button class="quiet-button" id="pause-button" type="button">暂停计时</button>
-        <button class="quiet-button" id="reset-button" type="button">重置本关</button>
-      </div>
-    </header>
-
-    <main class="content-grid">
-      <aside class="control-rail" aria-label="关卡控制">
-        <div class="intro-copy">
-          <p class="eyebrow">A DAILY LOG OF LOGIC</p>
-          <h1>把混乱，<br><em>归档成秩序。</em></h1>
-          <p class="intro-text">四种强度，四百份谜题档案。每一次落笔，都是对规则的重新确认。</p>
+  <div class="app-shell">
+    <section class="screen menu-screen" id="menu-screen" aria-labelledby="menu-title">
+      <header class="topbar">
+        <a class="wordmark" href="./" aria-label="九格档案首页">
+          <span class="wordmark-mark" aria-hidden="true">9</span>
+          <span><strong>九格档案</strong><small>SUDOKU ARCHIVE</small></span>
+        </a>
+        <div class="topbar-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="save-status">本地进度已保存</span>
         </div>
+        <button class="theme-button" id="menu-theme-toggle" type="button" aria-label="切换到白日模式">☼ 白日模式</button>
+      </header>
 
-        <section class="difficulty-section" aria-labelledby="difficulty-title">
+      <main class="menu-layout">
+        <section class="menu-copy">
+          <p class="eyebrow">A DAILY LOG OF LOGIC</p>
+          <h1 id="menu-title">把混乱，<br><em>归档成秩序。</em></h1>
+          <p class="intro-text">四种强度，四百份谜题档案。每一次落笔，都是对规则的重新确认。</p>
+          <div class="menu-note">
+            <span class="menu-note-mark">9</span>
+            <p>不猜答案，只遵守规则。<br>每一格都应该有它自己的理由。</p>
+          </div>
+        </section>
+
+        <section class="menu-controls" aria-label="关卡选择">
           <div class="section-heading">
-            <h2 id="difficulty-title">选择档案柜</h2>
-            <span id="difficulty-count">4 档</span>
+            <h2>选择档案柜</h2>
+            <span>4 档 · 400 关</span>
           </div>
           <div class="difficulty-list" id="difficulty-list"></div>
+
+          <div class="levels-section">
+            <div class="section-heading">
+              <h2>关卡目录</h2>
+              <span id="level-progress">0 / 100</span>
+            </div>
+            <div class="level-list" id="level-list" aria-label="当前难度关卡"></div>
+            <p class="unlock-note" id="unlock-note">完成当前关卡后解锁下一份档案。</p>
+          </div>
+
+          <button class="primary-button start-button" id="start-button" type="button">开始第 001 份档案</button>
+        </section>
+      </main>
+
+      <footer class="screen-footer">
+        <span>四档难度 · 每档 100 关 · 本地保存</span>
+        <span>RULES MAKE ROOM FOR CLARITY</span>
+      </footer>
+    </section>
+
+    <section class="screen game-screen" id="game-screen" aria-labelledby="stage-title" hidden>
+      <header class="topbar game-topbar">
+        <button class="back-button" id="menu-button" type="button">‹ 返回档案目录</button>
+        <div class="game-wordmark">
+          <span class="wordmark-mark" aria-hidden="true">9</span>
+          <span><strong>九格档案</strong><small id="stage-eyebrow">SIMPLE / FILE 001</small></span>
+        </div>
+        <div class="game-actions">
+          <button class="theme-button" id="game-theme-toggle" type="button" aria-label="切换到白日模式">☼ 白日模式</button>
+          <button class="quiet-button" id="pause-button" type="button">暂停计时</button>
+          <button class="quiet-button" id="reset-button" type="button">重置本关</button>
+        </div>
+      </header>
+
+      <main class="game-layout">
+        <section class="board-column" aria-label="数独棋盘">
+          <div class="stage-heading">
+            <div>
+              <p class="eyebrow" id="stage-difficulty">简单 · 入门推理</p>
+              <h1 id="stage-title">第 001 份档案</h1>
+            </div>
+            <div class="stage-index" aria-label="当前关卡">
+              <span>CASE</span>
+              <strong id="stage-index">001</strong>
+            </div>
+          </div>
+
+          <div class="metrics-strip" aria-label="游戏状态">
+            <div class="metric metric-timer">
+              <span class="metric-label">用时</span>
+              <strong id="timer">00:00</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">已填</span>
+              <strong><span id="filled-count">0</span><small> / 81</small></strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">逻辑冲突</span>
+              <strong id="mistake-count">0</strong>
+            </div>
+            <div class="pause-label" id="pause-label" hidden>计时已暂停</div>
+          </div>
+
+          <div class="board-wrap">
+            <div class="board" id="board" role="grid" aria-label="数独 9 乘 9 棋盘"></div>
+            <div class="paused-cover" id="paused-cover" hidden>
+              <span class="pause-glyph">Ⅱ</span>
+              <strong>档案暂存中</strong>
+              <span>点击“继续计时”回到棋盘</span>
+            </div>
+          </div>
         </section>
 
-        <section class="levels-section" aria-labelledby="levels-title">
-          <div class="section-heading">
-            <h2 id="levels-title">关卡目录</h2>
-            <span id="level-progress">0 / 100</span>
+        <aside class="game-controls" aria-label="数独控制">
+          <div class="logic-panel" id="logic-panel" aria-live="polite">
+            <div class="logic-panel-heading">
+              <span class="logic-kicker">LOGIC NOTE</span>
+              <span class="logic-kind" id="logic-kind">等待落笔</span>
+            </div>
+            <h2 id="logic-title">每一个数字，都应该有理由。</h2>
+            <div class="logic-details" id="logic-details">
+              <p>选择一个空格，使用下方数字；或先打开笔记模式记录候选。</p>
+            </div>
           </div>
-          <div class="level-list" id="level-list" aria-label="当前难度关卡"></div>
-          <p class="unlock-note" id="unlock-note">完成当前关卡后解锁下一份档案。</p>
-        </section>
-      </aside>
 
-      <section class="game-stage" aria-label="数独棋盘">
-        <div class="stage-heading">
-          <div>
-            <p class="eyebrow" id="stage-eyebrow">SIMPLE / FILE 001</p>
-            <h2 id="stage-title">简单 · 入门推理</h2>
-          </div>
-          <div class="stage-index" aria-label="当前关卡">
-            <span>CASE</span>
-            <strong id="stage-index">001</strong>
-          </div>
-        </div>
-
-        <div class="metrics-strip" aria-label="游戏状态">
-          <div class="metric metric-timer">
-            <span class="metric-label">用时</span>
-            <strong id="timer">00:00</strong>
-          </div>
-          <div class="metric">
-            <span class="metric-label">已填</span>
-            <strong><span id="filled-count">0</span><small> / 81</small></strong>
-          </div>
-          <div class="metric">
-            <span class="metric-label">记录</span>
-            <strong id="mistake-count">0</strong>
-          </div>
-          <div class="pause-label" id="pause-label" hidden>计时已暂停</div>
-        </div>
-
-        <div class="board-wrap">
-          <div class="board" id="board" role="grid" aria-label="数独 9 乘 9 棋盘"></div>
-          <div class="paused-cover" id="paused-cover" hidden>
-            <span class="pause-glyph">Ⅱ</span>
-            <strong>档案暂存中</strong>
-            <span>点击“继续计时”回到棋盘</span>
-          </div>
-        </div>
-
-        <div class="game-tools">
-          <div class="keypad" id="keypad" aria-label="数字键盘">
-            <button type="button" data-value="1">1</button>
-            <button type="button" data-value="2">2</button>
-            <button type="button" data-value="3">3</button>
-            <button type="button" data-value="4">4</button>
-            <button type="button" data-value="5">5</button>
-            <button type="button" data-value="6">6</button>
-            <button type="button" data-value="7">7</button>
-            <button type="button" data-value="8">8</button>
-            <button type="button" data-value="9">9</button>
-            <button class="keypad-clear" type="button" data-value="clear" aria-label="清除已选数字">清除</button>
-          </div>
-          <div class="action-row">
-            <button class="outline-button" id="check-button" type="button">检查答案</button>
+          <div class="selection-bar">
             <p class="selection-hint" id="selection-hint">选择一个空格开始记录。</p>
+            <button class="clear-button" id="clear-button" type="button">清除</button>
           </div>
-        </div>
 
-        <div class="stage-footer">
-          <p><kbd>1</kbd>—<kbd>9</kbd> 输入数字 <span>·</span> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> 移动 <span>·</span> <kbd>⌫</kbd> 清除</p>
-          <p class="footer-mark">RULES MAKE ROOM FOR CLARITY</p>
-        </div>
-      </section>
-    </main>
+          <div class="keypad" id="keypad" aria-label="数字键盘"></div>
+
+          <div class="mode-row">
+            <button class="mode-button" id="notes-button" type="button" aria-pressed="false">
+              <span class="mode-icon">✎</span>
+              <span><strong>笔记模式</strong><small>记录候选数字</small></span>
+            </button>
+            <button class="mode-button hint-button" id="hint-button" type="button">
+              <span class="mode-icon">?</span>
+              <span><strong id="hint-label">使用一次提示</strong><small>提示会解释推理过程</small></span>
+            </button>
+          </div>
+
+          <button class="outline-button check-button" id="check-button" type="button">检查当前逻辑</button>
+          <p class="control-help"><kbd>1</kbd>—<kbd>9</kbd> 输入 <span>·</span> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> 移动 <span>·</span> 无选择时点击数字可高亮盘面</p>
+        </aside>
+      </main>
+    </section>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
