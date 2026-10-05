@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a27">
+  <meta name="description" content="九格档案：四档难度、400 道关卡的 HTML5 数独游戏">
+  <title>九格档案 · Sudoku Archive</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./main.js"></script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="app-shell" id="app-shell">
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="九格档案首页">
+        <span class="wordmark-mark" aria-hidden="true">9</span>
+        <span><strong>九格档案</strong><small>SUDOKU ARCHIVE</small></span>
+      </a>
+      <div class="topbar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="save-status">本地进度已保存</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="quiet-button" id="pause-button" type="button">暂停计时</button>
+        <button class="quiet-button" id="reset-button" type="button">重置本关</button>
+      </div>
+    </header>
+
+    <main class="content-grid">
+      <aside class="control-rail" aria-label="关卡控制">
+        <div class="intro-copy">
+          <p class="eyebrow">A DAILY LOG OF LOGIC</p>
+          <h1>把混乱，<br><em>归档成秩序。</em></h1>
+          <p class="intro-text">四种强度，四百份谜题档案。每一次落笔，都是对规则的重新确认。</p>
+        </div>
+
+        <section class="difficulty-section" aria-labelledby="difficulty-title">
+          <div class="section-heading">
+            <h2 id="difficulty-title">选择档案柜</h2>
+            <span id="difficulty-count">4 档</span>
+          </div>
+          <div class="difficulty-list" id="difficulty-list"></div>
+        </section>
+
+        <section class="levels-section" aria-labelledby="levels-title">
+          <div class="section-heading">
+            <h2 id="levels-title">关卡目录</h2>
+            <span id="level-progress">0 / 100</span>
+          </div>
+          <div class="level-list" id="level-list" aria-label="当前难度关卡"></div>
+          <p class="unlock-note" id="unlock-note">完成当前关卡后解锁下一份档案。</p>
+        </section>
+      </aside>
+
+      <section class="game-stage" aria-label="数独棋盘">
+        <div class="stage-heading">
+          <div>
+            <p class="eyebrow" id="stage-eyebrow">SIMPLE / FILE 001</p>
+            <h2 id="stage-title">简单 · 入门推理</h2>
+          </div>
+          <div class="stage-index" aria-label="当前关卡">
+            <span>CASE</span>
+            <strong id="stage-index">001</strong>
+          </div>
+        </div>
+
+        <div class="metrics-strip" aria-label="游戏状态">
+          <div class="metric metric-timer">
+            <span class="metric-label">用时</span>
+            <strong id="timer">00:00</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">已填</span>
+            <strong><span id="filled-count">0</span><small> / 81</small></strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">记录</span>
+            <strong id="mistake-count">0</strong>
+          </div>
+          <div class="pause-label" id="pause-label" hidden>计时已暂停</div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="board" id="board" role="grid" aria-label="数独 9 乘 9 棋盘"></div>
+          <div class="paused-cover" id="paused-cover" hidden>
+            <span class="pause-glyph">Ⅱ</span>
+            <strong>档案暂存中</strong>
+            <span>点击“继续计时”回到棋盘</span>
+          </div>
+        </div>
+
+        <div class="game-tools">
+          <div class="keypad" id="keypad" aria-label="数字键盘">
+            <button type="button" data-value="1">1</button>
+            <button type="button" data-value="2">2</button>
+            <button type="button" data-value="3">3</button>
+            <button type="button" data-value="4">4</button>
+            <button type="button" data-value="5">5</button>
+            <button type="button" data-value="6">6</button>
+            <button type="button" data-value="7">7</button>
+            <button type="button" data-value="8">8</button>
+            <button type="button" data-value="9">9</button>
+            <button class="keypad-clear" type="button" data-value="clear" aria-label="清除已选数字">清除</button>
+          </div>
+          <div class="action-row">
+            <button class="outline-button" id="check-button" type="button">检查答案</button>
+            <p class="selection-hint" id="selection-hint">选择一个空格开始记录。</p>
+          </div>
+        </div>
+
+        <div class="stage-footer">
+          <p><kbd>1</kbd>—<kbd>9</kbd> 输入数字 <span>·</span> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> 移动 <span>·</span> <kbd>⌫</kbd> 清除</p>
+          <p class="footer-mark">RULES MAKE ROOM FOR CLARITY</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal-backdrop" id="complete-modal" hidden>
+    <section class="complete-modal" role="dialog" aria-modal="true" aria-labelledby="complete-title">
+      <button class="modal-close" id="modal-close" type="button" aria-label="关闭">×</button>
+      <p class="eyebrow">CASE CLOSED</p>
+      <div class="complete-seal" aria-hidden="true">✓</div>
+      <h2 id="complete-title">档案已归档</h2>
+      <p id="complete-message">你用 00:00 完成了这一关。</p>
+      <div class="complete-stats">
+        <span><small>本次用时</small><strong id="complete-time">00:00</strong></span>
+        <span><small>当前档案</small><strong id="complete-level">001 / 100</strong></span>
+      </div>
+      <button class="primary-button" id="next-button" type="button">打开下一份档案</button>
+    </section>
+  </div>
+</body>
+</html>
