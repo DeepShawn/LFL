@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame, updateGame, toggleView, performAction, enterScene, canSave, triggerEncounter } from '../site/game.js';
-import { SCENES, BUILDINGS, canOccupy, hasLineOfSight, nextPathPoint } from '../site/world.js';
+import { SCENES, BUILDINGS, INVESTIGATIONS, FLOOR_HEIGHT, canOccupy, hasLineOfSight, nextPathPoint, heightAt, moveActor, nearbyObject } from '../site/world.js';
 import { changeSanity, updateSanity, rewardClue, drinkWater, sanityEffects } from '../site/sanity.js';
 import { SaveStore, validateState } from '../site/storage.js';
 
@@ -49,14 +49,15 @@ test('all reachable objects and spawns have valid collision-free routes', () => 
   for (const scene of Object.values(SCENES)) {
     assert.ok(canOccupy(scene, scene.spawn.x, scene.spawn.z), scene.id + ' spawn');
     for (const o of scene.objects) {
-      assert.ok(canOccupy(scene, o.x, o.z), `${scene.id}:${o.id}`);
+      const target = { x: o.x, z: o.z + (o.type === 'exit' ? -1.1 : 1.1), y: o.y };
+      assert.ok(canOccupy(scene, target.x, target.z, .4, target.y), `${scene.id}:${o.id} approach`);
       let pos = { ...scene.spawn };
-      for (let i = 0; i < 600 && Math.hypot(o.x - pos.x, o.z - pos.z) > 1.1; i++) {
-        const p = nextPathPoint(scene, pos, o), dx = p.x - pos.x, dz = p.z - pos.z, len = Math.hypot(dx, dz);
-        if (len < .01) break;
-        const step = Math.min(len, .5); pos.x += dx / len * step; pos.z += dz / len * step;
+      for (let i = 0; i < 4500 && Math.hypot(target.x - pos.x, target.z - pos.z, target.y - pos.y) > .25; i++) {
+        const p = nextPathPoint(scene, pos, target), dx = p.x - pos.x, dz = p.z - pos.z, len = Math.hypot(dx, dz);
+        if (len < .001) break;
+        const step = Math.min(len, .4); moveActor(scene, pos, dx / len * step, dz / len * step);
       }
-      assert.ok(Math.hypot(o.x - pos.x, o.z - pos.z) < 1.2, `unreachable ${scene.id}:${o.id}`);
+      assert.ok(Math.hypot(target.x - pos.x, target.z - pos.z, target.y - pos.y) < .3, `unreachable ${scene.id}:${o.id}`);
     }
   }
 });
@@ -127,7 +128,7 @@ test('low SAN pending encounter cannot overwrite a safe checkpoint', () => {
 });
 
 test('tutorial recovery can finish when healing takes less than 1.5 seconds', () => {
-  const s = createGame('tutorial'); Object.assign(s.player, { x: 6, z: 22, san: 99 });
+  const s = createGame('tutorial'); Object.assign(s.player, { x: 6, z: 23, san: 99 });
   s.activatedLamps.push('tutorial-lamp');
   for (let i = 0; i < 10; i++) updateGame(s, { rest: true }, .05);
   assert.equal(s.player.san, 100); assert.equal(s.tutorial.recovered, true);
@@ -153,12 +154,13 @@ test('checkpoint before encounter can retry the puzzle without saving imminent d
   assert.equal(loaded.enemy.active, true); assert.ok(loaded.events.includes('lab'));
 });
 
-function walkTo(state, x, z) {
+function walkTo(state, x, z, y = 0) {
+  if (!canOccupy(SCENES[state.scene], x, z, .4, y)) z += 1.1;
   state.view = '2d';
-  for (let i = 0; i < 3000; i++) {
+  for (let i = 0; i < 16000; i++) {
     assert.equal(state.status, 'playing', `${state.scene}: ${state.failure}`);
-    if (Math.hypot(x - state.player.x, z - state.player.z) < .35) return;
-    const target = nextPathPoint(SCENES[state.scene], state.player, { x, z });
+    if (Math.hypot(x - state.player.x, z - state.player.z, y - state.player.y) < .25) return;
+    const target = nextPathPoint(SCENES[state.scene], state.player, { x, z, y });
     const dx = target.x - state.player.x, dz = target.z - state.player.z, distance = Math.hypot(dx, dz);
     assert.ok(distance > .001, `route stuck in ${state.scene}`);
     updateGame(state, { x: dx / distance, z: dz / distance, sprint: ['alert', 'chase', 'search'].includes(state.enemy.mode) && state.enemy.active }, .05);
@@ -211,4 +213,124 @@ test('complete tutorial movement, evidence, recovery, evasion and checkpoint reh
   const store = new SaveStore(storage()); assert.equal(store.save(s, true).ok, true);
   const restored = store.restore('tutorial', true).state;
   assert.equal(Object.values(restored.tutorial).every(Boolean), true);
+});
+
+for (const id of ['admin', 'lab', 'classroom']) test(`${id}: five continuous floors, all stair landings, descending and view switches`, () => {
+  const s = createGame(); s.scene = id; Object.assign(s.player, SCENES[id].spawn); s.view = '2d';
+  assert.equal(SCENES[id].floors, 5); assert.equal(SCENES[id].stairs.length, 4);
+  const heightChanges = [];
+  for (let floor = 1; floor < 5; floor++) {
+    const y = (floor - 1) * FLOOR_HEIGHT;
+    walkTo(s, 31.5, 23, y); walkTo(s, 31.5, 15, y + .9);
+    assert.ok(s.player.y > y && s.player.y < y + 1.8);
+    const before = structuredClone(s.player); toggleView(s); toggleView(s); assert.deepEqual(s.player, before);
+    walkTo(s, 31.5, 6.5, y + 1.8); walkTo(s, 36.5, 6.5, y + 1.8); walkTo(s, 36.5, 23, y + FLOOR_HEIGHT);
+    walkTo(s, 25, 24, y + FLOOR_HEIGHT); heightChanges.push(s.player.y);
+    assert.equal(s.player.floor, floor + 1);
+    assert.equal(performAction(s, 'exit').ok, false);
+    assert.equal(performAction(s, 'solve', { id: 'archive', answer: BUILDINGS.map(b => b.id) }).ok, false);
+  }
+  assert.deepEqual(heightChanges, [3.6, 7.2, 10.8, 14.4]);
+  walkTo(s, 25, 24, 0); assert.equal(s.player.floor, 1);
+  assert.equal(s.visitedFloors.filter(k => k.startsWith(id + ':')).length, 5);
+});
+
+test('first-person forward movement walks all five levels continuously and returns', () => {
+  const s = createGame(); s.scene = 'admin'; Object.assign(s.player, SCENES.admin.spawn);
+  for (const y of [3.6, 7.2, 10.8, 14.4, 0]) {
+    const target = { x: 25, z: 24, y };
+    for (let i = 0; i < 16000 && Math.hypot(s.player.x - target.x, s.player.z - target.z, s.player.y - y) > .25; i++) {
+      const step = nextPathPoint(SCENES.admin, s.player, target);
+      const dx = step.x - s.player.x, dz = step.z - s.player.z;
+      assert.ok(Math.hypot(dx, dz) > .001);
+      s.player.yaw = Math.atan2(-dx, -dz);
+      const before = s.player.y; updateGame(s, { z: -1 }, .05);
+      assert.ok(Math.abs(s.player.y - before) < .1);
+    }
+    assert.ok(Math.hypot(s.player.x - target.x, s.player.z - target.z, s.player.y - y) < .3);
+  }
+});
+
+test('stairs cannot be entered sideways, crossed through rails or jumped through floors', () => {
+  const scene = SCENES.admin;
+  const actor = { x: 31.5, z: 15, y: .9, floor: 1 };
+  moveActor(scene, actor, 7, 0); assert.ok(actor.x < 33);
+  assert.equal(heightAt(scene, 34, 15, 1), null);
+  const onFloor = { x: 20, z: 20, y: 0, floor: 1 }; moveActor(scene, onFloor, 0, 0); assert.equal(onFloor.y, 0);
+  assert.equal(hasLineOfSight(scene, 20, 20, 20, 20, 1.65, 5.25), false);
+});
+
+test('low planter does not erase head-height sight; solid walls do', () => {
+  assert.equal(hasLineOfSight(SCENES.campus, 14, 67, 22, 67), true);
+  assert.equal(hasLineOfSight(SCENES.admin, 10, 10, 17, 10, 5.25, 5.25), false);
+});
+
+test('tables and lamps have collision but their evidence remains reachable', () => {
+  const s = createGame(); s.scene = 'admin'; Object.assign(s.player, { x: 6, z: 7.1, y: 0, floor: 1 });
+  assert.equal(nearbyObject(s).id, 'admin-note');
+  moveActor(SCENES.admin, s.player, 0, -3); assert.ok(s.player.z > 6.7);
+  s.player.y = 3.6; s.player.floor = 2;
+  assert.equal(nearbyObject(s).id, 'admin-f2-note');
+  assert.equal(performAction(s, 'inspect', { id: 'admin-note' }).ok, false);
+});
+
+for (const id of ['admin', 'lab', 'classroom']) test(`${id}: upper evidence, answer and one-time SAN reward`, () => {
+  const s = createGame('hard'); s.scene = id; s.player.san = 50;
+  for (let floor = 2; floor <= 4; floor++) {
+    Object.assign(s.player, { x: 6, z: 7.1, y: (floor - 1) * FLOOR_HEIGHT, floor });
+    assert.equal(performAction(s, 'inspect', { id: `${id}-f${floor}-note` }).ok, true);
+    assert.equal(performAction(s, 'evidence', { id: `${id}-f${floor}-evidence` }).ok, true);
+  }
+  assert.equal(s.player.san, 50); assert.equal(s.pendingEncounter, `${id}-upper`);
+  s.pendingEncounter = null;
+  Object.assign(s.player, { x: 22, z: 7.1, y: 14.4, floor: 5 });
+  assert.equal(performAction(s, 'investigation', { building: id, answer: [] }).ok, false);
+  assert.equal(performAction(s, 'investigation', { building: id, answer: INVESTIGATIONS[id].answer }).ok, true);
+  assert.equal(s.player.san, 56); assert.equal(s.flags[INVESTIGATIONS[id].id], true);
+  performAction(s, 'investigation', { building: id, answer: INVESTIGATIONS[id].answer }); assert.equal(s.player.san, 56);
+});
+
+test('enemy navigates a continuous flight between floors without teleporting', () => {
+  const scene = SCENES.lab, enemy = { x: 31.5, z: 23, y: 0, floor: 1 }, target = { x: 25, z: 24, y: 3.6 };
+  for (let i = 0; i < 2400 && Math.hypot(enemy.x - target.x, enemy.z - target.z, enemy.y - target.y) > .3; i++) {
+    const step = nextPathPoint(scene, enemy, target), dx = step.x - enemy.x, dz = step.z - enemy.z, n = Math.hypot(dx, dz), before = enemy.y;
+    assert.ok(n > .001); moveActor(scene, enemy, dx / n * .16, dz / n * .16, .36);
+    assert.ok(Math.abs(enemy.y - before) < .1);
+  }
+  assert.equal(enemy.floor, 2); assert.ok(Math.hypot(enemy.x - 25, enemy.z - 24) < .3);
+});
+
+for (const mode of ['easy', 'hard']) for (const id of ['admin', 'lab', 'classroom']) test(`${mode} ${id}: complete upper route with real encounter and return downstairs`, () => {
+  const s = createGame(mode); s.scene = id; s.view = '2d'; Object.assign(s.player, SCENES[id].spawn);
+  for (let floor = 2; floor <= 4; floor++) {
+    const y = (floor - 1) * FLOOR_HEIGHT;
+    walkTo(s, 6, 22, y); assert.equal(performAction(s, 'lamp', { id: `${id}-f${floor}-lamp`, port: 'light' }).ok, true);
+    walkTo(s, 6, 6, y); assert.equal(performAction(s, 'inspect', { id: `${id}-f${floor}-note` }).ok, true);
+    walkTo(s, 22, 6, y); assert.equal(performAction(s, 'evidence', { id: `${id}-f${floor}-evidence` }).ok, true);
+    if (floor === 4) {
+      s.player.flashlight = false;
+      for (const [x, z] of [[16, 6], [16, 17], [8, 17], [8, 24]]) walkTo(s, x, z, y);
+      for (let i = 0; i < 220; i++) updateGame(s, {}, .05);
+      assert.equal(s.enemy.mode, 'patrol'); assert.equal(s.enemy.floor, 4);
+    }
+  }
+  walkTo(s, 22, 6, 14.4);
+  assert.equal(performAction(s, 'investigation', { building: id, answer: INVESTIGATIONS[id].answer }).ok, true);
+  walkTo(s, 14, 26, 0); assert.equal(performAction(s, 'exit').ok, true);
+  assert.equal(s.scene, 'campus'); assert.equal(s.player.y, 0);
+});
+
+test('floor checkpoint roundtrip and v1 migration preserve data and backup', () => {
+  const memory = storage(), store = new SaveStore(memory, '/repo/'), s = createGame(); s.scene = 'admin';
+  Object.assign(s.player, { x: 20, z: 20, y: 14.4, floor: 5 }); s.visitedFloors.push('admin:5');
+  assert.equal(store.save(s, true).ok, true);
+  assert.equal(store.restore('easy', true).state.player.y, 14.4);
+  const old = createGame(); old.scene = 'admin'; Object.assign(old.player, { x: 6, z: 6 }); old.flags.archive = true; old.inventory.archive = true;
+  delete old.player.y; delete old.player.floor; delete old.enemy.y; delete old.enemy.floor; delete old.visitedFloors;
+  const raw = JSON.stringify({ version: 1, mode: 'easy', savedAt: 1, auto: old, checkpoint: old }); memory.setItem(store.key('easy'), raw);
+  const migrated = store.restore('easy'); assert.equal(migrated.ok, true); assert.equal(migrated.migrated, true);
+  assert.equal(migrated.state.player.y, 0); assert.equal(migrated.state.inventory.archive, true);
+  assert.ok(canOccupy(SCENES.admin, migrated.state.player.x, migrated.state.player.z, .3, 0));
+  assert.equal(memory.getItem(store.key('easy')), raw);
+  assert.equal(store.save(migrated.state).ok, true); assert.equal(memory.getItem(store.key('easy') + ':v1-backup'), raw);
 });

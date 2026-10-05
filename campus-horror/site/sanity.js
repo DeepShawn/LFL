@@ -20,10 +20,10 @@ export function updateSanity(state, dt, { threatened = false, dark = false, rest
   changeSanity(state, -drain * mode.drain * dt);
 }
 
-export function rewardClue(state, id) {
+export function rewardClue(state, id, grantSanity = true) {
   if (state.notes.includes(id)) return false;
   state.notes.push(id);
-  changeSanity(state, MODES[state.mode].clueGain);
+  if (grantSanity) changeSanity(state, MODES[state.mode].clueGain);
   return true;
 }
 

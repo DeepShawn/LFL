@@ -244,6 +244,124 @@ test('all seven scenes render actual WebGL pixels; low SAN and bell motion updat
   } finally { await page.close(); }
 });
 
+test('five-floor geometry, near-wall rendering, indicators and minimap use shared height', { timeout: 90000 }, async () => {
+  const page = await pageFor();
+  try {
+    const report = await page.evaluate(async () => {
+      const { Renderer3D } = await import('./renderer-3d.js');
+      const { Renderer2D } = await import('./renderer-2d.js');
+      const { createGame } = await import('./game.js');
+      const { SCENES } = await import('./world.js');
+      const canvas = document.createElement('canvas'), mini = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;inset:0;width:640px;height:400px;z-index:30';
+      mini.style.cssText = 'position:fixed;right:0;top:0;width:200px;height:140px;z-index:31';
+      document.body.append(canvas, mini);
+      const r3 = new Renderer3D(canvas), r2 = new Renderer2D(mini, { mini: true });
+      const checks = [];
+      for (const id of ['admin', 'lab', 'classroom']) for (let floor = 1; floor <= 5; floor++) {
+        const s = createGame(); s.scene = id; Object.assign(s.player, { x: 25, z: 24, y: (floor - 1) * 3.6, floor, yaw: 0 });
+        const prior = JSON.stringify(s); r3.render(s, .016, { quality: 'low' }); r2.render(s, 0, {});
+        const gl = canvas.getContext('webgl2'), pixels = new Uint8Array(canvas.width * canvas.height * 4);
+        gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        checks.push({ id, floor, unchanged: prior === JSON.stringify(s), cameraY: r3.camera.position.y, glError: gl.getError(), pixels: new Set(pixels).size });
+      }
+      const stairState = createGame(); stairState.scene = 'admin'; Object.assign(stairState.player, { x: 31.5, z: 15, y: .9, floor: 1 });
+      r3.render(stairState, .016, {}); const stairEye = r3.camera.position.y;
+      const campus = createGame(); r3.render(campus, .016, {});
+      const gate = r3.items.get('gate');
+      const gateRingY = gate.indicator.position.y;
+      r3.dispose(); r2.dispose(); canvas.remove(); mini.remove();
+      return { checks, stairEye, gateRingY };
+    });
+    for (const row of report.checks) { assert.equal(row.glError, 0); assert.equal(row.unchanged, true); assert.ok(Math.abs(row.cameraY - ((row.floor - 1) * 3.6 + 1.65)) < .01); assert.ok(row.pixels > 8, JSON.stringify(row)); }
+    assert.ok(Math.abs(report.stairEye - 2.55) < .01);
+    assert.ok(report.gateRingY > .043, 'gate marker above platform');
+    clean(page);
+  } finally { await page.close(); }
+});
+
+test('actual stair movement lifts the camera, minimap stays in HUD and toggles without state loss', { timeout: 90000 }, async () => {
+  const page = await pageFor();
+  try {
+    const s = fixture('admin'); Object.assign(s.player, { x: 31.5, z: 22.8, y: 0, floor: 1, yaw: 0 });
+    await seed(page, s); await page.locator('#view-button').click();
+    await page.waitForFunction(() => !document.querySelector('#view-3d').hidden);
+    await page.clock.runFor(100);
+    assert.equal(await page.locator('#minimap-panel').isVisible(), true);
+    const bounds = await page.locator('#minimap-canvas').boundingBox(); assert.ok(bounds.width < 300 && bounds.height < 240);
+    await page.keyboard.down('KeyW'); await page.clock.runFor(4000); await page.keyboard.up('KeyW');
+    await page.locator('#pause-button').click();
+    const climbed = (await readSave(page)).auto; assert.ok(climbed.player.y > 1 && climbed.player.y < 1.8);
+    await page.getByRole('button', { name: '继续探索', exact: true }).click();
+    await page.locator('#minimap-toggle').click(); assert.equal(await page.locator('#minimap-canvas').isVisible(), false);
+    await page.locator('#minimap-toggle').click(); assert.equal(await page.locator('#minimap-canvas').isVisible(), true);
+    await page.locator('#pause-button').click(); const after = (await readSave(page)).auto;
+    assert.deepEqual(after.player, climbed.player);
+    await page.screenshot({ path: artifacts + '/five-floor-stairs.png' });
+    clean(page);
+  } finally { await page.close(); }
+});
+
+test('upper floor loads from checkpoint with matching HUD and current-floor evidence only', { timeout: 60000 }, async () => {
+  const page = await pageFor({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  try {
+    const s = fixture('admin'); Object.assign(s.player, { x: 6, z: 7.1, y: 7.2, floor: 3 }); s.view = '3d';
+    await seed(page, s);
+    await page.waitForFunction(() => document.querySelector('#location-label').textContent.includes('3F'));
+    assert.equal(await page.locator('#minimap-panel').getAttribute('data-floor'), '3');
+    await openObject(page); await page.getByRole('button', { name: '翻到纸背 · 核验压痕', exact: true }).click();
+    assert.ok((await readSave(page)).auto.notes.includes('admin-f3-note')); assert.ok(!(await readSave(page)).auto.notes.includes('admin-note'));
+    await closePaper(page); await page.screenshot({ path: artifacts + '/mobile-3d-minimap.png' });
+    const overlap = await page.evaluate(() => {
+      const m = document.querySelector('#minimap-panel').getBoundingClientRect();
+      return ['joystick', 'sprint-button', 'interact-button', 'view-button'].some(id => { const r = document.getElementById(id).getBoundingClientRect(); return m.left < r.right && m.right > r.left && m.top < r.bottom && m.bottom > r.top; });
+    });
+    assert.equal(overlap, false); clean(page);
+  } finally { await page.close(); }
+});
+
+test('all upper investigations require evidence and accept UI answers with one reward', { timeout: 90000 }, async () => {
+  const page = await pageFor();
+  try {
+    const cases = { admin: ['original', 'forty', 'seventeen'], lab: ['short', 'short', 'long', 'latch'], classroom: ['40', '17', '3', '1'] };
+    const flags = { admin: 'adminTrace', lab: 'labTrace', classroom: 'classTrace' };
+    for (const [id, answers] of Object.entries(cases)) {
+      const s = fixture(id); Object.assign(s.player, { x: 22, z: 7.1, y: 14.4, floor: 5, san: 50 });
+      await seed(page, s); await openObject(page);
+      assert.equal(await page.getByRole('button', { name: '提交本楼复核', exact: true }).isDisabled(), true);
+      await closePaper(page);
+      s.notes = [2, 3, 4].flatMap(f => [`${id}-f${f}-note`, `${id}-f${f}-evidence`]);
+      await seed(page, s); await openObject(page);
+      for (const [i, value] of answers.entries()) await page.locator('#interaction-dialog select').nth(i).selectOption(value);
+      await page.getByRole('button', { name: '提交本楼复核', exact: true }).click();
+      const saved = await readSave(page); assert.equal(saved.auto.flags[flags[id]], true); assert.equal(saved.auto.player.san, 60);
+      await openObject(page); assert.match(await page.locator('#interaction-dialog').innerText(), /已复核|已核验/);
+      await closePaper(page);
+    }
+    clean(page);
+  } finally { await page.close(); }
+});
+
+test('3D loss pauses play, explicit 2D continuation and restored context render again', { timeout: 60000 }, async () => {
+  const page = await pageFor();
+  try {
+    const s = fixture('admin'); s.view = '3d';
+    await seed(page, s); await page.waitForFunction(() => document.querySelector('#view-3d').width > 100);
+    await page.evaluate(() => { window.lostGL = document.getElementById('view-3d').getContext('webgl2').getExtension('WEBGL_lose_context'); window.lostGL.loseContext(); });
+    await page.waitForFunction(() => document.querySelector('#system-dialog').open);
+    assert.match(await page.locator('#system-dialog').innerText(), /3D画面暂时中断/);
+    await page.getByRole('button', { name: '切换2D继续', exact: true }).click();
+    assert.equal(await page.locator('#view-2d').isVisible(), true);
+    await page.evaluate(() => window.lostGL.restoreContext());
+    await page.waitForFunction(() => !document.querySelector('#view-3d').getContext('webgl2').isContextLost());
+    await page.clock.runFor(200); await page.locator('#view-button').click();
+    await page.waitForFunction(() => !document.querySelector('#view-3d').hidden);
+    await page.clock.runFor(200);
+    assert.equal(await page.locator('#system-dialog').isVisible(), false);
+    clean(page);
+  } finally { await page.close(); }
+});
+
 test('SAN audio gain increases without bypassing mute or pause', { timeout: 30000 }, async () => {
   const page = await pageFor();
   try {

@@ -1,4 +1,4 @@
-import { BUILDINGS, getScene, nearbyObject, visibleFrom } from './world.js';
+import { BUILDINGS, getScene, getFloor, nearbyObject, onStairs, visibleFrom } from './world.js';
 
 const TAU = Math.PI * 2;
 const COLORS = {
@@ -7,8 +7,9 @@ const COLORS = {
 };
 
 export class Renderer2D {
-  constructor(canvas) {
+  constructor(canvas, options = { mini: false }) {
     this.canvas = canvas;
+    this.mini = !!options.mini;
     this.ctx = canvas.getContext('2d', { alpha: false });
     if (!this.ctx) throw new Error('无法创建 Canvas 2D 绘图上下文。');
     this.width = 0;
@@ -26,8 +27,9 @@ export class Renderer2D {
 
   resize() {
     if (this.disposed) return;
-    const width = Math.max(1, this.canvas.clientWidth || this.width || this.canvas.width || 1);
-    const height = Math.max(1, this.canvas.clientHeight || this.height || this.canvas.height || 1);
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    if (width <= 0 || height <= 0) return;
     const ratio = Math.min(globalThis.devicePixelRatio || 1, this.quality === 'low' ? 1 : 1.5);
     if (width === this.width && height === this.height && ratio === this.pixelRatio) return;
     this.width = width;
@@ -51,9 +53,12 @@ export class Renderer2D {
   }
 
   visibility(player, range) {
-    const key = `${player.x}:${player.z}:${range}:${this.quality}`;
+    const eyeY = (player.y || 0) + 1.65;
+    const key = `${player.x}:${player.z}:${eyeY}:${player.floor}:${range}:${this.quality}`;
     if (this.visibilityKey === key) return this.polygon;
     const nearby = this.obstacles.filter(box => {
+      const { object } = box;
+      if (!object.blocksSight || eyeY <= object.y || eyeY >= object.y + object.h) return false;
       const x = Math.max(box.left, Math.min(player.x, box.right));
       const z = Math.max(box.top, Math.min(player.z, box.bottom));
       return Math.hypot(x - player.x, z - player.z) <= range + 0.1;
@@ -113,8 +118,16 @@ export class Renderer2D {
   drawFloor(player, range) {
     const ctx = this.ctx;
     const outdoor = this.sceneId === 'campus';
+    ctx.save();
+    if (this.world.floors > 1) {
+      ctx.beginPath();
+      ctx.rect(0, 0, 28.5, this.world.height);
+      ctx.rect(28.5, 22, this.world.width - 28.5, 6);
+      ctx.clip();
+    }
     ctx.fillStyle = outdoor ? COLORS.floor : '#52635b';
     ctx.fillRect(0, 0, this.world.width, this.world.height);
+    if (this.mini) { ctx.restore(); return; }
     if (outdoor) {
       ctx.fillStyle = '#2c4543';
       ctx.fillRect(1, 1, 9.5, this.world.height - 2);
@@ -146,12 +159,68 @@ export class Renderer2D {
       ctx.setLineDash([]);
     }
     ctx.fillStyle = 'rgba(9,22,30,0.22)';
-    for (const zone of this.world.darkZones) ctx.fillRect(zone.x - zone.w / 2, zone.z - zone.d / 2, zone.w, zone.d);
+    for (const zone of this.world.darkZones) if (zone.floor === getFloor(this.world, player.y)) ctx.fillRect(zone.x - zone.w / 2, zone.z - zone.d / 2, zone.w, zone.d);
+    ctx.restore();
+  }
+
+  drawStairs(player, scale) {
+    if (this.world.floors === 1) return;
+    const floor = getFloor(this.world, player.y);
+    let stair = this.world.stairs.find(s => s.from === floor) || this.world.stairs.at(-1);
+    if (onStairs(this.world, player)) {
+      const fraction = player.z <= 8 ? 0.5 : player.x < 34 ? (22 - player.z) / 28 : 0.5 + (player.z - 8) / 28;
+      stair = this.world.stairs.reduce((nearest, s) => Math.abs(s.y + s.rise * fraction - player.y) < Math.abs(nearest.y + nearest.rise * fraction - player.y) ? s : nearest);
+    }
+    const ctx = this.ctx;
+    const climbing = onStairs(this.world, player);
+    const showA = climbing || floor < this.world.floors;
+    const showB = climbing || floor > 1;
+    ctx.fillStyle = '#60766b';
+    ctx.fillRect(30, 5, 8, 3);
+    ctx.fillStyle = '#53685f';
+    if (showA) ctx.fillRect(30, 8, 3, 14);
+    ctx.fillStyle = '#637368';
+    if (showB) ctx.fillRect(35, 8, 3, 14);
+    ctx.strokeStyle = '#b5b198';
+    ctx.lineWidth = Math.max(0.045, 0.5 / scale);
+    ctx.beginPath();
+    for (let z = 8; z <= 22; z += this.mini ? 1.4 : 0.7) {
+      if (showA) { ctx.moveTo(30, z); ctx.lineTo(33, z); }
+      if (showB) { ctx.moveTo(35, z); ctx.lineTo(38, z); }
+    }
+    ctx.stroke();
+    ctx.strokeStyle = '#97aaa4';
+    ctx.lineWidth = 0.16;
+    ctx.beginPath();
+    for (const x of [29.8, 33.2, 34.8, 38.2]) {
+      if (x < 34 ? !showA : !showB) continue;
+      ctx.moveTo(x, 8.2); ctx.lineTo(x, 21.8);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = COLORS.paper;
+    ctx.lineWidth = Math.max(0.1, 1 / scale);
+    ctx.beginPath();
+    for (const x of [31.5, 36.5]) {
+      if (x < 34 ? !showA : !showB) continue;
+      const direction = climbing && x > 34 ? 1 : -1;
+      ctx.moveTo(x, 16 - direction); ctx.lineTo(x, 16 + direction);
+      ctx.moveTo(x - 0.45, 16 + direction * 0.45); ctx.lineTo(x, 16 + direction); ctx.lineTo(x + 0.45, 16 + direction * 0.45);
+    }
+    ctx.stroke();
+    if (!this.mini) {
+      ctx.font = '0.5px "Noto Sans SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#e4d9b7';
+      ctx.fillText(climbing ? `${stair.from}F — ${stair.to}F` : `${floor}F 楼梯`, 34, 6.8);
+    }
   }
 
   drawWalls(player, range) {
     const ctx = this.ctx;
+    const floor = getFloor(this.world, player.y);
     for (const { object: wall, left, right, top, bottom } of this.obstacles) {
+      if (wall.floor && wall.floor !== floor) continue;
+      if (wall.kind === 'stair-guard' || wall.kind === 'table' || wall.kind === 'lamp-post') continue;
       if (right < player.x - range || left > player.x + range || bottom < player.z - range || top > player.z + range) continue;
       ctx.fillStyle = wall.kind === 'tree' || wall.kind === 'planter' ? '#33564e' : '#7d908b';
       ctx.fillRect(left, top, wall.w, wall.d);
@@ -168,12 +237,9 @@ export class Renderer2D {
         ctx.beginPath(); ctx.arc(wall.x, wall.z, wall.w * 0.43, 0, TAU); ctx.fill();
       }
     }
-    if (this.sceneId !== 'campus') {
+    if (this.sceneId !== 'campus' && !this.mini) {
       ctx.fillStyle = '#a2b8ae';
       for (const z of [4, 9, 18, 23]) ctx.fillRect(0.5, z - 1.1, 0.13, 2.2);
-      ctx.strokeStyle = '#b09d78';
-      ctx.lineWidth = 0.1;
-      for (let z = 3.1; z < 25; z += 3.35) ctx.strokeRect(27.55, z - 1, 0.65, 2);
     }
   }
 
@@ -186,6 +252,12 @@ export class Renderer2D {
     ctx.lineWidth = Math.max(0.06, 1.3 / scale);
     ctx.strokeStyle = locked ? '#98a9a8' : '#ead8b0';
     ctx.fillStyle = COLORS.ink;
+    const table = this.world.obstacles.find(obstacle => obstacle.kind === 'table' && obstacle.objectId === object.id);
+    if (table) {
+      ctx.fillStyle = '#655543';
+      ctx.fillRect(-table.w / 2, -table.d / 2, table.w, table.d);
+      ctx.strokeRect(-table.w / 2, -table.d / 2, table.w, table.d);
+    }
     switch (object.type) {
       case 'entrance':
       case 'exit':
@@ -245,12 +317,14 @@ export class Renderer2D {
         ctx.beginPath(); ctx.moveTo(-0.2, 0.12); ctx.lineTo(0, -0.19); ctx.lineTo(0.2, 0.12); ctx.stroke();
         break;
       case 'puzzle':
+      case 'investigation':
         ctx.fillStyle = '#6c5f48';
         ctx.fillRect(-0.42, -0.32, 0.84, 0.64); ctx.strokeRect(-0.42, -0.32, 0.84, 0.64);
         ctx.beginPath(); ctx.moveTo(0, -0.24); ctx.lineTo(0, 0.24); ctx.stroke();
         ctx.fillStyle = COLORS.paper; ctx.fillRect(-0.25, -0.13, 0.12, 0.2);
         break;
       case 'note':
+      case 'evidence':
       case 'voice':
         ctx.fillStyle = '#d8c8a4';
         ctx.fillRect(-0.31, -0.37, 0.62, 0.74);
@@ -306,15 +380,80 @@ export class Renderer2D {
     ctx.restore();
   }
 
+  renderMini(state, range) {
+    const ctx = this.ctx;
+    const { player } = state;
+    const floor = getFloor(this.world, player.y);
+    const scale = Math.max(0.01, Math.min((this.width - 16) / this.world.width, (this.height - 48) / this.world.height));
+    const left = (this.width - this.world.width * scale) / 2;
+    const top = 24 + (this.height - 48 - this.world.height * scale) / 2;
+    ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = COLORS.dark;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.save();
+    ctx.translate(left, top);
+    ctx.scale(scale, scale);
+    ctx.save();
+    this.clipVisibility(this.visibility(player, range));
+    this.drawFloor(player, range);
+    this.drawStairs(player, scale);
+    this.drawWalls(player, range);
+    for (const object of this.world.objects) {
+      if (!['entrance', 'exit', 'gate', 'lamp'].includes(object.type)) continue;
+      if (object.floor !== floor || Math.abs(object.y - (player.y || 0)) > 0.45 || !visibleFrom(this.world, player, object, range)) continue;
+      ctx.strokeStyle = COLORS.paper;
+      ctx.lineWidth = 1.2 / scale;
+      if (object.type === 'lamp') {
+        ctx.fillStyle = state.activatedLamps.includes(object.id) ? '#e6c17f' : '#646b5d';
+        ctx.beginPath(); ctx.arc(object.x, object.z, 2.4 / scale, 0, TAU); ctx.fill(); ctx.stroke();
+      } else {
+        ctx.fillStyle = COLORS.tile;
+        ctx.fillRect(object.x - 2.5 / scale, object.z - 3 / scale, 5 / scale, 6 / scale);
+        ctx.strokeRect(object.x - 2.5 / scale, object.z - 3 / scale, 5 / scale, 6 / scale);
+      }
+    }
+    ctx.restore();
+    ctx.translate(player.x, player.z);
+    ctx.rotate(-player.yaw);
+    ctx.fillStyle = '#efce89';
+    ctx.strokeStyle = COLORS.ink;
+    ctx.lineWidth = 1 / scale;
+    ctx.beginPath();
+    ctx.moveTo(0, -5 / scale); ctx.lineTo(-3.5 / scale, 4 / scale); ctx.lineTo(0, 2 / scale); ctx.lineTo(3.5 / scale, 4 / scale);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.font = '11px "Noto Sans SC", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ddd8c4';
+    ctx.fillText(`北 ↑   ${floor}F${onStairs(this.world, player) ? ' 楼梯间' : ''}`, 8, 12);
+    ctx.font = '10px "Noto Sans SC", sans-serif';
+    ctx.lineWidth = 1;
+    const legendY = this.height - 11;
+    for (const [index, text] of ['楼梯', '门', '安全灯'].entries()) {
+      const x = 8 + index * (this.width - 16) / 3;
+      ctx.strokeStyle = COLORS.paper;
+      if (index === 0) {
+        ctx.beginPath(); ctx.moveTo(x, legendY + 3); ctx.lineTo(x + 3, legendY + 3); ctx.lineTo(x + 3, legendY); ctx.lineTo(x + 6, legendY); ctx.lineTo(x + 6, legendY - 3); ctx.stroke();
+      } else if (index === 1) ctx.strokeRect(x, legendY - 4, 6, 8);
+      else { ctx.beginPath(); ctx.arc(x + 3, legendY, 3, 0, TAU); ctx.stroke(); }
+      ctx.fillText(text, x + 10, legendY);
+    }
+  }
+
   render(state, dt, settings = {}) {
     if (this.disposed) return;
     this.quality = settings.quality || 'standard';
     this.resize();
+    if (!this.canvas.clientWidth || !this.canvas.clientHeight) return;
     if (state.scene !== this.sceneId) this.loadScene(state.scene);
     const ctx = this.ctx;
     const { player } = state;
     const sanity = Math.max(0, Math.min(100, player.san)) / 100;
     const range = (player.flashlight ? 16 : 11) * (0.68 + sanity * 0.32);
+    if (this.mini) { this.renderMini(state, range); return; }
+    const floor = getFloor(this.world, player.y);
     const scale = Math.min(this.width / 25, this.height / 20, 43);
     const centerX = this.width / 2;
     const centerY = this.height / 2;
@@ -327,6 +466,7 @@ export class Renderer2D {
     ctx.scale(scale, scale);
     this.clipVisibility(this.visibility(player, range));
     this.drawFloor(player, range);
+    this.drawStairs(player, scale);
     const angle = -Math.PI / 2 - player.yaw;
     const light = ctx.createRadialGradient(player.x, player.z, 0.4, player.x, player.z, range);
     light.addColorStop(0, 'rgba(220,211,171,0.21)');
@@ -342,11 +482,12 @@ export class Renderer2D {
     this.drawWalls(player, range);
     const nearby = nearbyObject(state);
     for (const object of this.world.objects) {
+      if (object.floor !== floor || Math.abs(object.y - (player.y || 0)) > 0.45) continue;
       if (object.type === 'water' && state.collected.includes(object.id)) continue;
       if (!visibleFrom(this.world, player, object, range)) continue;
       this.drawObject(object, state, scale, nearby);
     }
-    if (state.enemy?.active && visibleFrom(this.world, player, state.enemy, range)) this.drawEnemy(state.enemy, scale);
+    if (state.enemy?.active && state.enemy.floor === floor && Math.abs((state.enemy.y || 0) - (player.y || 0)) < this.world.floorHeight / 2 && visibleFrom(this.world, player, state.enemy, range)) this.drawEnemy(state.enemy, scale);
     if (this.sceneId === 'campus' && !settings.reducedEffects) {
       ctx.strokeStyle = 'rgba(164,189,200,0.16)';
       ctx.lineWidth = 0.026;

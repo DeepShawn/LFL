@@ -154,7 +154,7 @@ export class GameAudio {
     smooth(this.dissonanceGain.gain, this.reducedEffects ? 0 : stress * stress * 0.023);
     smooth(this.dissonance[1].frequency, 119.4 + Math.sin(state.elapsed * 0.19) * stress * 0.8, 0.7);
     const enemy = state.enemy;
-    const distance = enemy?.active ? Math.hypot(enemy.x - state.player.x, enemy.z - state.player.z) : Infinity;
+    const distance = enemy?.active ? Math.hypot(enemy.x - state.player.x, enemy.z - state.player.z, (enemy.y - state.player.y) * 2) : Infinity;
     const proximity = Math.max(0, 1 - distance / 10);
     const rustle = 0.55 + 0.45 * Math.sin(state.elapsed * 2.13 + Math.sin(state.elapsed * 0.77));
     smooth(this.paper.gain.gain, proximity * proximity * (0.035 + rustle * 0.065) * gentle, 0.18);

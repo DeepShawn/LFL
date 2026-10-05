@@ -1,8 +1,8 @@
 import { MODES } from './modes.js';
-import { BUILDINGS, getScene, canOccupy, hasLineOfSight, inDarkZone, nextPathPoint, nearbyObject } from './world.js';
+import { BUILDINGS, INVESTIGATIONS, getScene, canOccupy, hasLineOfSight, inDarkZone, nextPathPoint, nearbyObject, moveActor, onStairs, locationLabel, heightAt } from './world.js';
 import { changeSanity, updateSanity, rewardClue, drinkWater } from './sanity.js';
 
-const blankEnemy = () => ({ active: false, x: 7, z: 7, yaw: 0, mode: 'patrol', timer: 0, lost: 0, patrol: 0, pathTimer: 0, waypoint: null, target: null });
+const blankEnemy = () => ({ active: false, x: 7, z: 7, y: 0, floor: 1, yaw: 0, mode: 'patrol', timer: 0, lost: 0, patrol: 0, pathTimer: 0, waypoint: null, target: null });
 const result = (ok, message, extra = {}) => ({ ok, message, ...extra });
 
 export function createGame(mode = 'easy') {
@@ -12,7 +12,7 @@ export function createGame(mode = 'easy') {
     mode, scene, view: '3d', status: 'playing', elapsed: 0,
     player: { ...getScene(scene).spawn, pitch: 0, san: 100, stamina: 100, flashlight: true },
     flags: {}, inventory: { water: 0, archive: false, pass: false, name: false }, notes: [], collected: [],
-    activatedLamps: ['campus-lamp'], visited: [scene], enemy: blankEnemy(), enemies: {},
+    activatedLamps: ['campus-lamp'], visited: [scene], visitedFloors: [`${scene}:1`], enemy: blankEnemy(), enemies: {},
     tutorial: { moved: false, switched: false, light: false, inspected: false, puzzle: false, recovered: false, water: false, escaped: false, retried: false },
     pendingEncounter: null, events: [], bellUntil: 0, checkpointLabel: mode === 'tutorial' ? '入夜演习 · 入口' : '北门 · 入夜', checkpointRequest: true, ending: null, message: '', restTime: 0,
   };
@@ -23,11 +23,11 @@ export function isThreatened(state) {
 }
 
 export function canSave(state) {
-  return state.status === 'playing' && !state.pendingEncounter && !isThreatened(state) && (!state.enemy.active || Math.hypot(state.enemy.x - state.player.x, state.enemy.z - state.player.z) > 10);
+  return state.status === 'playing' && !state.pendingEncounter && !isThreatened(state) && (!state.enemy.active || Math.hypot(state.enemy.x - state.player.x, state.enemy.z - state.player.z, state.enemy.y - state.player.y) > 10);
 }
 
 export function activeLamp(state) {
-  return getScene(state.scene).objects.find(o => o.type === 'lamp' && state.activatedLamps.includes(o.id) && Math.hypot(o.x - state.player.x, o.z - state.player.z) < 3 && hasLineOfSight(getScene(state.scene), o.x, o.z, state.player.x, state.player.z));
+  return getScene(state.scene).objects.find(o => o.type === 'lamp' && Math.abs(o.y - state.player.y) < .3 && state.activatedLamps.includes(o.id) && Math.hypot(o.x - state.player.x, o.z - state.player.z) < 3 && hasLineOfSight(getScene(state.scene), o.x, o.z, state.player.x, state.player.z, o.y + 1.25, state.player.y + 1.65));
 }
 
 export function toggleView(state) {
@@ -50,16 +50,17 @@ export function enterScene(state, target) {
     const exit = BUILDINGS.find(b => b.id === old);
     if (exit) Object.assign(state.player, { x: 20, z: exit.z, yaw: Math.PI / 2 });
   }
-  if (state.enemy.active && Math.hypot(state.enemy.x - state.player.x, state.enemy.z - state.player.z) < 11) {
+  if (state.enemy.active && Math.hypot(state.enemy.x - state.player.x, state.enemy.z - state.player.z, state.enemy.y - state.player.y) < 11) {
     const destination = getScene(target), origin = { x: state.player.x, z: state.player.z };
     const choices = [];
     for (let radius = 1; radius <= 12; radius++) for (let step = 0; step < 16; step++) {
       const angle = step * Math.PI / 8, x = origin.x + Math.cos(angle) * radius, z = origin.z + Math.sin(angle) * radius;
-      if (canOccupy(destination, x, z) && hasLineOfSight(destination, origin.x, origin.z, x, z) && Math.hypot(x - state.enemy.x, z - state.enemy.z) > 11) choices.push({ x, z, radius });
+      if (heightAt(destination, x, z, 0) === 0 && canOccupy(destination, x, z) && hasLineOfSight(destination, origin.x, origin.z, x, z) && Math.hypot(x - state.enemy.x, z - state.enemy.z, state.enemy.y) > 11) choices.push({ x, z, radius });
     }
     if (choices.length) { state.player.x = choices[0].x; state.player.z = choices[0].z; }
   }
   if (!state.visited.includes(target)) state.visited.push(target);
+  if (!state.visitedFloors.includes(`${target}:1`)) state.visitedFloors.push(`${target}:1`);
   if (old === 'canteen' && state.flags.name && !state.events.includes('return')) state.pendingEncounter = 'return';
   state.checkpointLabel = `${getScene(target).label} · 入口`;
   state.checkpointRequest = true;
@@ -70,31 +71,27 @@ export function triggerEncounter(state, id) {
   if (state.events.includes(id) && id !== 'training') return;
   if (!state.events.includes(id)) state.events.push(id);
   const scene = getScene(state.scene);
-  const options = scene.patrol.filter(p => Math.hypot(p.x - state.player.x, p.z - state.player.z) > 10);
-  const spawn = options.find(p => !hasLineOfSight(scene, p.x, p.z, state.player.x, state.player.z)) || options[0] || scene.patrol[0];
-  state.enemy = { ...blankEnemy(), ...spawn, active: true, mode: 'alert', timer: 2.5, target: { x: state.player.x, z: state.player.z } };
+  const options = scene.patrol.filter(p => p.floor === state.player.floor && canOccupy(scene, p.x, p.z, .36, p.y) && Math.hypot(p.x - state.player.x, p.z - state.player.z) > 10);
+  const spawn = options.find(p => !hasLineOfSight(scene, p.x, p.z, state.player.x, state.player.z, p.y + 1.65, state.player.y + 1.65)) || options[0] || scene.patrol[0];
+  state.enemy = { ...blankEnemy(), ...spawn, active: true, mode: 'alert', timer: 2.5, target: { x: state.player.x, z: state.player.z, y: state.player.y } };
   state.message = '【翻页声】远处有人合上了点名册。绕过墙角，熄灯，保持安静。';
   changeSanity(state, state.mode === 'tutorial' ? -25 : -8 * MODES[state.mode].drain);
-}
-
-function moveBody(scene, body, dx, dz, radius) {
-  if (canOccupy(scene, body.x + dx, body.z, radius)) body.x += dx;
-  if (canOccupy(scene, body.x, body.z + dz, radius)) body.z += dz;
 }
 
 function updateEnemy(state, dt, running) {
   const e = state.enemy;
   if (!e.active) return;
   const scene = getScene(state.scene), p = state.player, mode = MODES[state.mode];
-  const distance = Math.hypot(e.x - p.x, e.z - p.z);
-  const line = hasLineOfSight(scene, e.x, e.z, p.x, p.z);
-  const detected = (line && distance < (p.flashlight ? 10 : 4.2)) || (running && distance < 6.5);
+  const distance = Math.hypot(e.x - p.x, e.z - p.z, e.y - p.y);
+  const line = hasLineOfSight(scene, e.x, e.z, p.x, p.z, e.y + 1.65, p.y + 1.5);
+  const hearing = Math.abs(e.y - p.y) < .4 || (onStairs(scene, e) && onStairs(scene, p));
+  const detected = (line && distance < (p.flashlight ? 10 : 4.2)) || (running && hearing && distance < 6.5);
   if (e.mode === 'alert') {
     e.timer -= dt;
     if (e.timer <= 0) { e.mode = 'chase'; e.lost = 0; }
     return;
   }
-  if (detected) { e.mode = 'chase'; e.lost = 0; e.target = { x: p.x, z: p.z }; }
+  if (detected) { e.mode = 'chase'; e.lost = 0; e.target = { x: p.x, z: p.z, y: p.y }; }
   else if (e.mode === 'chase') {
     e.lost += dt;
     if (e.lost > 1.6) { e.mode = 'search'; e.timer = mode.searchTime; }
@@ -108,8 +105,9 @@ function updateEnemy(state, dt, running) {
   }
   let destination = e.target;
   if (e.mode === 'patrol') {
-    destination = scene.patrol[e.patrol % scene.patrol.length];
-    if (Math.hypot(e.x - destination.x, e.z - destination.z) < 0.7) { e.patrol++; destination = scene.patrol[e.patrol % scene.patrol.length]; }
+    const route = scene.patrol.filter(point => point.floor === e.floor);
+    destination = route[e.patrol % route.length];
+    if (Math.hypot(e.x - destination.x, e.z - destination.z, e.y - destination.y) < 0.7) { e.patrol++; destination = route[e.patrol % route.length]; }
   }
   if (destination) {
     e.pathTimer -= dt;
@@ -120,11 +118,11 @@ function updateEnemy(state, dt, running) {
     if (len > 0.1) {
       const speed = mode.enemySpeed * (e.mode === 'patrol' ? 0.5 : 1);
       const step = Math.min(len, speed * dt);
-      moveBody(scene, e, dx / len * step, dz / len * step, 0.36);
+      moveActor(scene, e, dx / len * step, dz / len * step, 0.36);
       e.yaw = Math.atan2(-dx, -dz);
     }
   }
-  if (distance < 0.85 && line) {
+  if (Math.hypot(e.x - p.x, e.z - p.z, e.y - p.y) < 0.85 && line) {
     if (state.mode === 'tutorial') {
       e.active = false; Object.assign(p, scene.spawn); state.message = '演习暂停：先走到墙角后，再关灯。可以回演练点重试，不损失进度。';
     } else { state.status = 'failed'; state.failure = '点名册在你面前合上了。下一次，先打断它的视线。'; }
@@ -149,7 +147,16 @@ export function updateGame(state, input, dt) {
   const running = !!input.sprint && magnitude > 0.1 && p.stamina > 3;
   const speed = running ? 5.5 : 3.3;
   const before = { x: p.x, z: p.z };
-  moveBody(scene, p, dx * speed * dt, dz * speed * dt, 0.34);
+  const previousFloor = p.floor;
+  moveActor(scene, p, dx * speed * dt, dz * speed * dt, 0.34);
+  const floorKey = `${state.scene}:${p.floor}`;
+  if (!onStairs(scene, p) && !state.visitedFloors.includes(floorKey)) {
+    state.visitedFloors.push(floorKey);
+    state.checkpointLabel = `${locationLabel(state)} · 楼梯平台`;
+    state.checkpointRequest = true;
+    state.message = `${p.floor}F · ${scene.floorNames[p.floor - 1]}。调查属于可选溯源，不影响一层主线。`;
+  }
+  if (previousFloor !== p.floor) state.restTime = 0;
   const moved = Math.hypot(p.x - before.x, p.z - before.z) > 0.001;
   if (moved) state.tutorial.moved = true;
   p.stamina = Math.max(0, Math.min(100, p.stamina + (running ? -21 : 15) * dt));
@@ -200,31 +207,54 @@ export function performAction(state, action, payload = {}) {
   if (action === 'enter') return enterScene(state, payload.target);
   if (action === 'exit') {
     if (state.mode === 'tutorial') return result(false, '完成演练后，使用左上方“完成教程”返回模式选择。');
+    if (state.player.floor !== 1 || state.player.y > .3) return result(false, '出口位于1F，请沿楼梯下楼。');
     return enterScene(state, 'campus');
   }
   if (action === 'inspect') {
-    if (!scene.objects.some(o => o.type === 'note' && o.id === payload.id)) return result(false, '没有这份记录。');
-    const gained = rewardClue(state, payload.id);
+    const note = scene.objects.find(o => o.type === 'note' && o.id === payload.id);
+    if (!note || Math.abs(note.y - state.player.y) > .5) return result(false, '请在这份记录所在的楼层核验。');
+    const gained = rewardClue(state, payload.id, note.floor === 1);
     state.tutorial.inspected = true;
     if (state.mode === 'tutorial') state.checkpointRequest = true;
-    return result(true, gained ? '已核验旧痕，记录进入手记。SAN恢复。' : '已记录这条线索。', { save: true });
+    return result(true, gained ? (note.floor === 1 ? '已核验旧痕，记录进入手记。SAN恢复。' : '楼层记录已收入手记。核对本层实物后，去5F完成整条溯源可获得一次SAN奖励。') : '已记录这条线索。', { save: true });
   }
   if (action === 'water') {
     const object = scene.objects.find(o => o.type === 'water' && o.id === payload.id);
-    if (!object || state.collected.includes(object.id)) return result(false, '这里的温水已经取走。');
+    if (!object || Math.abs(object.y - state.player.y) > .5 || state.collected.includes(object.id)) return result(false, '这里没有可拾取的温水，或已经取走。');
     state.collected.push(object.id); state.inventory.water += MODES[state.mode].waterCount;
     return result(true, `获得温水 ×${MODES[state.mode].waterCount}。需要时按H饮用。`, { save: true });
   }
   if (action === 'lamp') {
     const object = scene.objects.find(o => o.type === 'lamp' && o.id === payload.id);
-    if (!object) return result(false, '没有找到灯座。');
+    if (!object || Math.abs(object.y - state.player.y) > .5) return result(false, '没有找到本层的灯座。');
     if (payload.port !== 'light') return result(false, '这接到了广播支路。按照插头刻字，连接“照明检修”。');
     if (!state.activatedLamps.includes(object.id)) state.activatedLamps.push(object.id);
-    state.checkpointLabel = `${scene.label} · 安全灯`;
+    state.checkpointLabel = `${locationLabel(state)} · 安全灯`;
     state.checkpointRequest = true;
     return result(true, '安全灯亮了。关闭面板后，在灯下停步并按住R或“定神”恢复SAN。', { save: true, close: true });
   }
+  if (action === 'evidence') {
+    const object = scene.objects.find(o => o.type === 'evidence' && o.id === payload.id);
+    if (!object || Math.abs(object.y - state.player.y) > .5) return result(false, '请到对应楼层检查实物。');
+    const fresh = rewardClue(state, object.id, false);
+    const encounter = fresh && object.floor === 4 && !state.enemy.active;
+    if (encounter) state.pendingEncounter = `${state.scene}-upper`;
+    return result(true, fresh ? `实物旧刻已记录。纸面与实物要同时核对。${encounter ? '四层走廊传来翻页声；关闭面板后利用遮挡脱离追踪。' : '收齐2—4F证据后，到5F复核台完成溯源。'}` : '实物证据已在手记中，不会重复触发异常。', { save: true, close: true });
+  }
+  if (action === 'investigation') {
+    const investigation = INVESTIGATIONS[payload.building];
+    if (!investigation || state.scene !== payload.building || state.player.floor !== 5 || Math.abs(state.player.y - 14.4) > .3) return result(false, '请到本楼5F复核台完成调查。');
+    if (state.flags[investigation.id]) return result(true, '本楼溯源已完成，SAN奖励只结算一次。');
+    const required = [2, 3, 4].flatMap(f => [`${state.scene}-f${f}-note`, `${state.scene}-f${f}-evidence`]);
+    if (!required.every(id => state.notes.includes(id))) return result(false, '尚未收齐2—4F的纸背与实物证据。每层两项，手记可查缺漏。');
+    if (JSON.stringify(payload.answer) !== JSON.stringify(investigation.answer)) return result(false, '这与旧痕不一致。查看证据与提示后可重新核验，不消耗物品。');
+    state.flags[investigation.id] = true;
+    rewardClue(state, `investigation-${state.scene}`);
+    state.checkpointLabel = `${locationLabel(state)} · 溯源完成`; state.checkpointRequest = true;
+    return result(true, '本楼溯源完成，SAN恢复。它能重写墨迹，却不能替你改变旧痕。支线不增加结局门槛。', { save: true, close: true });
+  }
   if (action === 'solve') {
+    if (state.player.floor !== 1 || state.player.y > .3) return result(false, '原主线谜题位于1F，请先下楼。');
     const expected = { archive: 'admin', circuit: 'lab', seat: 'classroom', pass: 'dorm', name: 'canteen', power: 'admin', tutorial: 'tutorial' };
     if (expected[payload.id] !== state.scene) return result(false, '请在对应物件前操作。');
     if (payload.id === 'power' && !state.flags.name) return result(false, '总控需要原册与姓名条核对；先完成五栋楼的调查。');
@@ -241,13 +271,13 @@ export function performAction(state, action, payload = {}) {
     return puzzleComplete(state, payload.id);
   }
   if (action === 'echoes') {
-    if (state.scene !== 'canteen' || !state.flags.name) return result(false, '先完成归名，拿回自己的姓名条。');
+    if (state.scene !== 'canteen' || state.player.floor !== 1 || !state.flags.name) return result(false, '先完成归名，拿回自己的姓名条。');
     if (JSON.stringify(payload.answer) !== '[1,8,32]') return result(false, '按声条背面的旧册号归位，不要只看正面的姓名。');
     state.flags.echoes = true;
     return result(true, '三十九道旧应答归回原册。还要在行政楼关闭重复播送，它们才能散场。', { close: true, save: true });
   }
   if (action === 'gate') {
-    if (state.scene !== 'campus') return result(false, '请回到北门核验。');
+    if (state.scene !== 'campus' || state.player.y > .3) return result(false, '请回到北门核验。');
     if (!state.flags.name || !state.flags.pass) return result(false, '旧联证离校，旧名验本人。你仍需找到旧签离联和自己的姓名条。');
     if (!['leave', 'sign'].includes(payload.choice)) return result(false, '请选择如何离校。');
     state.ending = payload.choice === 'sign' ? 'bad' : state.flags.echoes && state.flags.power ? 'true' : 'normal';

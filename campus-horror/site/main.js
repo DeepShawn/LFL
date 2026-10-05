@@ -1,5 +1,5 @@
 import { createGame, updateGame, performAction, interactionTarget, isThreatened, canSave, activeLamp, tutorialComplete } from './game.js';
-import { getScene } from './world.js';
+import { getScene, locationLabel } from './world.js';
 import { DEFAULT_SETTINGS, MODES } from './modes.js';
 import { sanityEffects } from './sanity.js';
 import { SaveStore, snapshot } from './storage.js';
@@ -12,6 +12,9 @@ const $ = id => document.getElementById(id);
 const system = $('system-dialog'), paper = $('interaction-dialog');
 const audio = new GameAudio();
 const r2 = new Renderer2D($('view-2d'));
+const minimap = new Renderer2D($('minimap-canvas'), { mini: true });
+let minimapCollapsed = matchMedia('(max-height: 680px)').matches;
+let minimapDrawAt = 0, renderFault = false;
 let r3 = null, webglError = null, state = null, lastFrame = 0, lastSave = 0, paused = true, modalType = '';
 let memoryCheckpoint = null, messageUntil = 0, toastTimer, pendingBell = false;
 let settings = { ...DEFAULT_SETTINGS, reducedEffects: matchMedia('(prefers-reduced-motion: reduce)').matches };
@@ -81,11 +84,11 @@ function saveNow(checkpoint = false, replace = false) {
   }
 }
 function applyAction(action, payload) {
-  const beforeEncounter = ['solve', 'voice', 'training', 'exit'].includes(action) && canSave(state) ? snapshot(state) : null;
+  const beforeEncounter = ['solve', 'voice', 'training', 'exit', 'evidence'].includes(action) && canSave(state) ? snapshot(state) : null;
   const r = performAction(state, action, payload);
   if (r.ok) {
     if (state.pendingEncounter && beforeEncounter) {
-      beforeEncounter.checkpointLabel = `${getScene(beforeEncounter.scene).label} · 异常发生前`;
+      beforeEncounter.checkpointLabel = `${locationLabel(beforeEncounter)} · 异常发生前`;
       memoryCheckpoint = beforeEncounter;
       const saved = store.save(beforeEncounter, true);
       if (saved.ok) $('save-status').textContent = '检查点 · 异常发生前';
@@ -115,6 +118,11 @@ async function prepareRenderers() {
 }
 function syncView() {
   $('view-3d').hidden = state.view !== '3d'; $('view-2d').hidden = state.view !== '2d';
+  $('minimap-panel').hidden = state.view !== '3d';
+  $('minimap-canvas').hidden = minimapCollapsed; $('minimap-legend').hidden = minimapCollapsed;
+  $('minimap-toggle').textContent = minimapCollapsed ? '展开' : '收起';
+  $('minimap-toggle').setAttribute('aria-expanded', String(!minimapCollapsed));
+  minimapDrawAt = 0;
   $('crosshair').hidden = state.view !== '3d';
   $('view-button').textContent = state.view === '3d' ? '切换到2D · V' : '切换到3D · V';
   $('look-hint').textContent = state.view === '3d' ? '拖动画面观察 · 电脑可点击锁定鼠标 · V切换' : 'WASD或摇杆移动 · 墙后不可见 · V切换';
@@ -170,10 +178,10 @@ function refreshSaves() {
     if (saved.data) {
       const b = button(`继续 · ${config.label}`, () => {
         const restored = store.restore(mode);
-        if (restored.ok) launch(restored.state); else toast(restored.error);
+        if (restored.ok) { launch(restored.state); if (restored.migrated) toast('旧版存档已适配到1F；下一次保存前会保留原始v1备份。'); } else toast(restored.error);
       });
       b.dataset.continue = mode;
-      b.append(el('small', `${getScene(saved.data.auto.scene).label} / SAN ${Math.round(saved.data.auto.player.san)} / ${new Date(saved.data.savedAt).toLocaleString('zh-CN')}`));
+      b.append(el('small', `${locationLabel(saved.data.auto)} / SAN ${Math.round(saved.data.auto.player.san)} / ${new Date(saved.data.savedAt).toLocaleString('zh-CN')}`));
       list.append(b);
     }
   }
@@ -198,7 +206,7 @@ function retry() {
   if (paper.open) paper.close();
   if (system.open) system.close();
   state = next; lastSave = state.elapsed; state.message = '已回到最近检查点。道具、SAN和机关均恢复到该时刻。'; messageUntil = performance.now() + 6000;
-  syncView(); saveNow(false); resumeWorld();
+  syncView(); saveNow(false); updateHUD(); resumeWorld();
 }
 function askRetry() {
   modalType = 'confirm';
@@ -271,6 +279,7 @@ function interact(kind) {
 }
 async function action(action) {
   if (!state || paused) return;
+  if (action === 'switch' && state.view === '2d' && renderFault) { toast('3D上下文尚未恢复，请先保持2D视角。'); return; }
   if (action === 'switch' && state.view === '2d' && !r3 && !await prepareRenderers()) { toast('此设备未启用WebGL2，无法切换到真正3D。'); return; }
   const r = applyAction(action);
   if (action === 'switch') syncView();
@@ -281,7 +290,9 @@ function updateHUD() {
   if (!state) return;
   const effects = sanityEffects(state.player.san), target = interactionTarget(state), lamp = activeLamp(state);
   $('mode-label').textContent = MODES[state.mode].label;
-  $('location-label').textContent = getScene(state.scene).label;
+  $('location-label').textContent = locationLabel(state);
+  $('minimap-label').textContent = `北 ↑ · ${locationLabel(state)}`;
+  $('minimap-panel').dataset.floor = String(state.player.floor);
   $('objective').textContent = objective(state);
   $('san-value').textContent = Math.ceil(state.player.san);
   $('san-label').textContent = effects.label;
@@ -301,7 +312,7 @@ function updateHUD() {
   if (state.message) { $('subtitles').textContent = state.message; state.message = ''; messageUntil = performance.now() + 7000; }
   if (performance.now() > messageUntil) {
     const e = state.enemy;
-    $('subtitles').textContent = isThreatened(state) ? `【${e.mode === 'search' ? '翻页声正在搜索' : '翻页声靠近'}】${e.x < state.player.x ? '左侧' : '右侧'}，${e.z < state.player.z ? '地图上方' : '地图下方'}。可切视角观察，利用墙角遮挡。` : '';
+    $('subtitles').textContent = isThreatened(state) ? `【${e.mode === 'search' ? '翻页声正在搜索' : '翻页声靠近'}】${e.x < state.player.x ? '左侧' : '右侧'}，${e.z < state.player.z ? '地图上方' : '地图下方'}，${e.floor === state.player.floor ? '同层' : `${e.floor}F`}。可切视角观察，利用墙角遮挡。` : '';
   }
 }
 
@@ -324,7 +335,14 @@ function loop(now) {
       if (state.status === 'failed') showFailure();
     }
     if (!document.hidden) {
-      if (state.view === '3d') r3?.render(state, paused ? 0 : dt, settings); else r2.render(state, paused ? 0 : dt, settings);
+      if (state.view === '3d') {
+        if (!renderFault) {
+          try {
+            r3?.render(state, paused ? 0 : dt, settings);
+            if (!minimapCollapsed && now >= minimapDrawAt) { minimap.render(state, 0, settings); minimapDrawAt = now + 100; }
+          } catch (error) { handleRenderFailure(error.message); }
+        }
+      } else r2.render(state, paused ? 0 : dt, settings);
       audio.update(state, paused ? 0 : dt, settings);
       if (pendingBell && !paused) { audio.bell?.(); pendingBell = false; }
       updateHUD();
@@ -393,7 +411,23 @@ for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) joysti
 window.addEventListener('blur', () => { clearInput(); if (state && !paused) pauseMenu(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { saveNow(false); if (state && !system.open && !paper.open) pauseMenu(); pauseWorld(); } });
 window.addEventListener('pagehide', () => saveNow(false));
-window.addEventListener('resize', () => { r2.resize(); r3?.resize(); });
-$('view-3d').addEventListener('webglcontextlost', event => { event.preventDefault(); webglError = '图形上下文丢失'; pauseWorld(); if (!state) return; modalType = 'unsupported'; showSystem('3D画面暂时中断', ['浏览器释放了图形上下文。进度仍保留在本页，请选择2D继续，或刷新后读取安全存档。'], [{ text: '切换2D继续', fn: () => { state.view = '2d'; if (state.mode === 'tutorial') state.tutorial.switched = true; r3 = null; syncView(); closeSystem(); } }]); });
+window.addEventListener('resize', () => { r2.resize(); r3?.resize(); minimap.resize(); minimapDrawAt = 0; });
+function handleRenderFailure(message) {
+  renderFault = true; webglError = message; pauseWorld();
+  if (!state) { $('boot-status').textContent = '3D暂不可用，请重新载入页面。'; return; }
+  if (paper.open) paper.close();
+  modalType = 'unsupported';
+  showSystem('3D画面暂时中断', ['进度保留在本页。图形上下文恢复后可切回3D，也可先用2D继续；存储受限时不要直接刷新。'], [{ text: '切换2D继续', fn: () => { state.view = '2d'; if (state.mode === 'tutorial') state.tutorial.switched = true; syncView(); closeSystem(); } }]);
+}
+$('view-3d').addEventListener('webglcontextlost', event => { event.preventDefault(); handleRenderFailure('图形上下文丢失'); });
+$('view-3d').addEventListener('webglcontextrestored', () => { renderFault = false; webglError = null; r3?.clearScene(); minimapDrawAt = 0; toast('3D图形上下文已恢复，可重新切换视角。'); });
+$('minimap-toggle').addEventListener('click', () => { minimapCollapsed = !minimapCollapsed; syncView(); });
+const objectivePanel = document.querySelector('.objective-box');
+new ResizeObserver(() => {
+  if (!state) return;
+  const compactPortrait = innerWidth <= 760 && innerHeight > innerWidth;
+  $('minimap-panel').style.top = compactPortrait ? `${Math.max(150, Math.ceil(objectivePanel.getBoundingClientRect().bottom + 8))}px` : '';
+}).observe(objectivePanel);
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) { lookPointer = null; pointer.turn = 0; pointer.pitch = 0; } });
 refreshSaves();
 requestAnimationFrame(loop);

@@ -1,5 +1,5 @@
-import { INTRO, RULES, NOTES, ENDINGS, TUTORIAL_STEPS, objective, inventoryLabels } from './story.js';
-import { BUILDINGS, SCENES } from './world.js';
+import { INTRO, RULES, NOTES, EVIDENCE, SIDE_CASES, ENDINGS, TUTORIAL_STEPS, objective, inventoryLabels } from './story.js';
+import { BUILDINGS, SCENES, INVESTIGATIONS } from './world.js';
 
 function node(tag, className = '', text = '') {
   const item = document.createElement(tag);
@@ -71,6 +71,8 @@ export class Interactions {
 
     switch (kind) {
       case 'note': this.note(); break;
+      case 'evidence': this.evidence(); break;
+      case 'investigation': this.investigation(); break;
       case 'puzzle': this.puzzle(); break;
       case 'control': this.circuit(true); break;
       case 'gate': this.gate(); break;
@@ -83,7 +85,10 @@ export class Interactions {
       case 'map': this.map(); break;
       default: paragraph(this.content, '这件物品由现场界面处理，请关闭面板返回现场。');
     }
+    const floor = object.floor ?? state.player.floor;
+    if (!this.title.textContent.includes(`${floor}F`)) this.title.textContent += ` · ${floor}F`;
     if (!this.dialog.open) this.dialog.showModal();
+    this.content.scrollTop = 0;
     this.title.focus();
   }
 
@@ -137,15 +142,16 @@ export class Interactions {
   }
 
   noteReference(scene, parent, inspectHere = false) {
-    const note = NOTES[scene];
-    const known = this.state.notes.includes(`${scene}-note`);
+    const object = SCENES[scene].objects.find(item => item.type === 'note' && item.floor === 1);
+    const note = NOTES[object.noteId];
+    const known = this.state.notes.includes(object.id);
     if (known) {
       const details = node('details', 'verified-note document-view');
       details.append(node('summary', '', `复核已取得纸背：${note.title}`));
       paragraph(details, note.back);
       parent.append(details);
     } else {
-      paragraph(parent, `线索在本房间的“${SCENES[scene].objects.find(item => item.type === 'note').label}”。看正面不等于核验，请翻到纸背。`, 'clue-location');
+      paragraph(parent, `线索在${SCENES[scene].label}1F的“${object.label}”。看正面不等于核验，请翻到纸背。`, 'clue-location');
       if (inspectHere) {
         const paper = node('article', 'document-view');
         paper.hidden = true;
@@ -153,7 +159,7 @@ export class Interactions {
         paragraph(paper, note.back);
         const read = button('检查旁边检修记录的纸背', () => {
           paper.hidden = false;
-          this.act('inspect', { id: `${scene}-note` }, () => {
+          this.act('inspect', { id: object.id }, () => {
             read.disabled = true;
             read.textContent = '检修记录纸背已核验';
           });
@@ -175,8 +181,7 @@ export class Interactions {
   }
 
   note() {
-    const scene = Object.keys(NOTES).find(id => `${id}-note` === this.object.id) || this.state.scene;
-    const note = NOTES[scene];
+    const note = NOTES[this.object.noteId];
     this.title.textContent = note.title;
     const paper = node('article', 'document-view');
     const side = node('h3', '', '纸张正面 · 墨迹');
@@ -199,13 +204,142 @@ export class Interactions {
     };
     controls.append(frontButton, backButton);
     paper.append(side, text, controls);
-    paragraph(paper, '纸背的内容可留在已核验手册中；翻阅不要求立即关闭面板。');
+    paragraph(paper, this.object.floor > 1 ? '可选楼层纸背：翻背后收录手册，不恢复 SAN，也不会替你收取实物证据。' : '纸背的内容可留在已核验手册中；翻阅不要求立即关闭面板。');
+    if (this.object.floor > 1) paragraph(paper, this.object.floor === 5 ? '本页只是复核索引，不能替代2—4F三张纸背与三份实物；东侧复核台可逐项预选，跳过这条支线不影响主线和结局。' : '同层东侧（x22，z6）还有一份实物，须到台前调查收录；本层纸条与实物是两项独立记录。跳过上层调查不影响一层主线或结局。');
     this.content.append(paper);
     show(false);
   }
 
+  evidence() {
+    const evidence = EVIDENCE[this.object.noteId];
+    const board = this.board(evidence.title);
+    const known = this.state.notes.includes(this.object.id);
+    paragraph(board, '可选实物调查：需要与本层纸背分别收录。检查不消耗道具、不恢复 SAN，也不替代一层主线。');
+    const record = node('article', 'document-view');
+    record.append(node('h3', '', '近看实物痕迹'));
+    paragraph(record, evidence.text);
+    board.append(record);
+    const status = paragraph(board, known ? '这份实物已收录，可在夜录手册中复核。' : '实物尚未收录。检查后按下方按钮确认，面板可能返回现场；已记录的内容可在手册中重看。', 'clue-location');
+    const inspect = button(known ? '实物已收录' : '检查实物痕迹并收录', () => this.act('evidence', { id: this.object.id }, () => {
+      inspect.disabled = true;
+      inspect.textContent = '实物已收录';
+      status.textContent = '实物已记录；请在手册核对本层纸背是否已收录。五层总结不能替代这两项。';
+    }), 'puzzle-submit');
+    inspect.disabled = known;
+    board.append(inspect);
+    paragraph(board, '调查可能引起带字幕的异常或遭遇，关闭面板后留意退路。被抓或 SAN 耗尽只是可重试失败，不是剧情结局；先利用遮挡脱离追逐，再到安全灯下恢复。');
+  }
+
+  sideProgress(parent, building, complete = this.state.flags[INVESTIGATIONS[building].id]) {
+    const scene = SCENES[building];
+    const required = scene.objects.filter(item => item.floor >= 2 && item.floor <= 4 && ['note', 'evidence'].includes(item.type));
+    const known = required.filter(item => this.state.notes.includes(item.id)).length;
+    const details = node('details', 'journal-note side-progress');
+    details.open = this.object.investigationId === building;
+    details.append(node('summary', '', `${scene.label} · ${SIDE_CASES[building].title} · 已收录 ${known} / ${required.length} 项 · ${complete ? '已复核' : '待5F复核'}`));
+    const list = node('ul', 'inventory-list');
+    for (const floor of [2, 3, 4]) {
+      const items = required.filter(item => item.floor === floor);
+      const status = items.map(item => `${item.type === 'note' ? '纸背' : '实物'}${this.state.notes.includes(item.id) ? '已收录' : '未收录'}`).join('；');
+      list.append(node('li', '', `${floor}F ${scene.floorNames[floor - 1]}：${status}。`));
+    }
+    const summary = scene.objects.find(item => item.type === 'note' && item.floor === 5);
+    list.append(node('li', '', `5F总结纸${this.state.notes.includes(summary.id) ? '已收录' : '未收录'}，不计入六项取证，也不是提交复核的前置要求。`));
+    details.append(list);
+    paragraph(details, complete ? '本支线已核验，SAN奖励只发一次；一层主线和结局条件不变。' : known === required.length ? '六项材料齐备，可到本楼5F复核台提交；仍可不做，直接继续一层主线。' : '未收录的纸背须在西侧翻背，实物须在同层东侧检查；答题或阅读五层总结不能补齐材料。');
+    parent.append(details);
+    return known === required.length;
+  }
+
+  investigation() {
+    const building = this.object.investigationId;
+    const scene = SCENES[building];
+    const side = SIDE_CASES[building];
+    const board = this.board(`${scene.label} · ${side.title} · 复核台`);
+    paragraph(board, '这是可选调查，不是离校手续，也不是新签名。先收齐本楼2、3、4F的三张纸背与三份实物，再操作下方复核栏；5F纸条只作总结，不能替代六项材料。');
+    const progress = node('section', 'side-case-progress');
+    board.append(progress);
+    const ready = this.sideProgress(progress, building);
+    if (this.state.flags[INVESTIGATIONS[building].id]) {
+      paragraph(board, side.conclusion, 'puzzle-complete');
+      return;
+    }
+    paragraph(board, ready ? '六项取证齐备。每项先预选，可单独撤回或全部重置；按提交才进行核验。' : '取证未齐：可试排选项，但暂不能提交。请按上方进度返回缺项楼层，纸条在西侧、实物在东侧。', 'clue-location');
+    paragraph(board, '答错可以继续改选重试，不消耗任何道具，不会锁住主线或结局。只有首次通过本支线复核会恢复一次 SAN；关闭面板会丢弃尚未提交的预选。');
+    paragraph(board, '手机点选各栏即可操作；键盘用Tab切换控件，方向键选择，Enter或空格操作按钮。');
+    const controls = this.controls(board, building === 'lab' ? '按先后排列四个机械动作' : '逐项核对原始记录');
+    const selects = [];
+    const removeButtons = [];
+    side.fields.forEach((field, index) => {
+      const row = node('div', 'echo-slot');
+      const label = node('label');
+      const caption = node('span', '', field.label);
+      caption.style.display = 'block';
+      const select = node('select', 'echo-select');
+      select.setAttribute('aria-label', field.label);
+      const empty = node('option', '', '未选择（可撤回）');
+      empty.value = '';
+      select.append(empty);
+      for (const choice of field.options) {
+        const option = node('option', '', choice.label);
+        option.value = String(choice.value);
+        select.append(option);
+      }
+      select.addEventListener('change', () => update());
+      const remove = button(`撤回第${index + 1}项`, () => {
+        select.value = '';
+        update();
+        select.focus();
+        this.report(`第${index + 1}项已撤回，尚未提交复核。`);
+      });
+      remove.setAttribute('aria-label', `撤回：${field.label}`);
+      label.append(caption, select);
+      row.append(label, remove);
+      controls.append(row);
+      selects.push(select);
+      removeButtons.push(remove);
+    });
+    const preview = paragraph(controls, '', 'fragment-selection');
+    preview.setAttribute('aria-live', 'polite');
+    const reset = button('清空全部复核预选', () => {
+      selects.forEach(select => { select.value = ''; });
+      update();
+      this.report('所有预选已清空，已收录的证据不变；未消耗任何道具。');
+    });
+    const submit = button('提交本楼复核', () => {
+      const answer = selects.map((select, index) => side.fields[index].options.find(option => String(option.value) === select.value).value);
+      this.act('investigation', { building, answer }, () => {
+        controls.disabled = true;
+        progress.replaceChildren();
+        this.sideProgress(progress, building, true);
+        paragraph(board, side.conclusion, 'puzzle-complete');
+      });
+    }, 'puzzle-submit');
+    const update = () => {
+      submit.disabled = !ready || selects.some(select => select.value === '');
+      reset.disabled = selects.every(select => select.value === '');
+      removeButtons.forEach((remove, index) => { remove.disabled = selects[index].value === ''; });
+      const labels = selects.map((select, index) => `${index + 1}：${side.fields[index].options.find(option => String(option.value) === select.value)?.label || '未选择'}`);
+      preview.textContent = `当前预选（尚未核验）：\n${labels.join('\n')}`;
+    };
+    controls.append(reset, submit);
+    update();
+    this.hints(board, side.hints);
+    const records = node('details', 'verified-note document-view');
+    records.append(node('summary', '', '对照已收录材料（未取得的内容不显示）'));
+    const known = scene.objects.filter(item => item.floor >= 2 && item.floor <= 4 && ['note', 'evidence'].includes(item.type) && this.state.notes.includes(item.id));
+    for (const item of known) {
+      const record = item.type === 'note' ? NOTES[item.noteId] : EVIDENCE[item.noteId];
+      records.append(node('h3', '', `${item.floor}F ${item.type === 'note' ? '纸背' : '实物'} · ${record.title}`));
+      paragraph(records, item.type === 'note' ? record.back : record.text);
+    }
+    if (!known.length) paragraph(records, '尚未收录本支线材料。请先到本楼2—4F调查纸背与实物。');
+    board.append(records);
+  }
+
   puzzle() {
-    const scene = this.object.id?.replace(/-puzzle$/, '') || this.state.scene;
+    const scene = this.object.puzzleId || this.object.id?.replace(/-puzzle$/, '') || this.state.scene;
+    if (SIDE_CASES[scene]) paragraph(this.content, `本台是1F主线，完成后可继续前往下一栋楼。想追查“${SIDE_CASES[scene].title}”可从南端真实楼梯步行到2—5F；这是可选支线，不影响离校或三种结局，路线见地图。`, 'clue-location');
     switch (scene) {
       case 'admin': this.archive(); break;
       case 'lab': this.circuit(false); break;
@@ -732,7 +866,7 @@ export class Interactions {
     confirmation.hidden = true;
     confirmation.setAttribute('aria-label', '主动认领第41行的第二次确认');
     confirmation.append(node('h3', '', '这不是旧凭核验'));
-    paragraph(confirmation, `确认后，你将亲手认领伪造的同名身份，走向“${ENDINGS.bad.title}”。无论旧应答或总路是否完成，新签都优先决定这个结局；听见或回应过声音不会替你做此选择。`);
+    paragraph(confirmation, `此选项只在旧签离联和第17号姓名条均已取得后开放。再次勾选并确认后，你将亲手认领伪造的同名身份，走向“${ENDINGS.bad.title}”。无论旧应答或总路是否完成，新签都优先决定这个结局；听见或回应过声音不会替你做此选择。`);
     const consent = node('label', 'signature-consent');
     const check = node('input');
     check.type = 'checkbox';
@@ -872,24 +1006,45 @@ export class Interactions {
     if (!count) inventory.append(node('li', '', '尚未取得旧凭或温水。'));
     panel.append(inventory, node('h3', '', '已翻背核验的纸张'));
     let known = 0;
-    for (const [scene, note] of Object.entries(NOTES)) {
-      if (!this.state.notes.includes(`${scene}-note`)) continue;
-      known++;
-      const entry = node('details', 'journal-note');
-      entry.append(node('summary', '', `${SCENES[scene].label} · ${note.title}`));
-      entry.append(node('h4', '', '正面 · 浮墨可能改写'));
-      paragraph(entry, note.front);
-      entry.append(node('h4', '', '背面 · 已核验旧压痕'));
-      paragraph(entry, note.back);
-      panel.append(entry);
+    for (const scene of Object.values(SCENES)) {
+      for (const object of scene.objects.filter(item => item.type === 'note' && this.state.notes.includes(item.id))) {
+        const note = NOTES[object.noteId];
+        known++;
+        const entry = node('details', 'journal-note');
+        entry.append(node('summary', '', `${scene.label} · ${object.floor}F · ${note.title}`));
+        entry.append(node('h4', '', '正面 · 浮墨可能改写'));
+        paragraph(entry, note.front);
+        entry.append(node('h4', '', '背面 · 已核验旧压痕'));
+        paragraph(entry, note.back);
+        panel.append(entry);
+      }
     }
     if (!known) paragraph(panel, '手册还没有已核验纸背。到现场调查纸条并翻背后才会收录，不展示未取得的线索。');
+    panel.append(node('h3', '', '已检查收录的实物'));
+    let evidenceCount = 0;
+    for (const scene of Object.values(SCENES)) {
+      for (const object of scene.objects.filter(item => item.type === 'evidence' && this.state.notes.includes(item.id))) {
+        const evidence = EVIDENCE[object.noteId];
+        const entry = node('details', 'journal-note');
+        entry.append(node('summary', '', `${scene.label} · ${object.floor}F · ${evidence.title}`));
+        paragraph(entry, evidence.text);
+        panel.append(entry);
+        evidenceCount++;
+      }
+    }
+    if (!evidenceCount) paragraph(panel, '还没有实物记录。上层纸条只收录纸背，须另到2—4F东侧实物台检查，五层笔记不能代替取证。');
+    panel.append(node('h3', '', '可选调查 · 三条支线进度'));
+    paragraph(panel, '行政、实验、教学三栋楼各有五层；2—5F合计十二个新增楼层，不是新增十二栋建筑。一层五章路线仍是主线，上层调查可随时搁置，不影响原有三种结局。');
+    for (const building of Object.keys(SIDE_CASES)) {
+      this.sideProgress(panel, building);
+      if (this.state.flags[INVESTIGATIONS[building].id]) paragraph(panel, SIDE_CASES[building].conclusion, 'puzzle-complete');
+    }
     panel.append(node('h3', '', '夜行规则'));
     const rules = node('ol', 'rules-list');
     RULES.forEach(rule => rules.append(node('li', '', rule)));
     panel.append(rules);
     this.route(panel);
-    if (this.state.flags.name) paragraph(panel, '完成归名后，可先在食堂归还旧应答，再返行政楼处理总控，最后到北门；也可以只核验自己的旧凭离开。');
+    if (this.state.flags.name) paragraph(panel, '完成归名后，可先在食堂1F归还旧应答，再返行政楼1F处理总控，最后到北门；也可以只核验自己的旧凭离开。');
     if (this.state.mode === 'tutorial' || this.state.scene === 'tutorial') {
       const details = node('details', 'tutorial-reference');
       details.append(node('summary', '', '演习操作索引'));
@@ -904,21 +1059,45 @@ export class Interactions {
   map() {
     this.title.textContent = '校园纵向图';
     const panel = node('section', 'map-view');
-    paragraph(panel, '北在上，南在下。地图只标建筑与当前开放状态，不显示敌人位置。');
+    const scene = SCENES[this.state.scene];
+    const floor = this.state.player.floor;
+    paragraph(panel, `当前位置：${scene.label} · ${floor}F / ${scene.floors}F · ${scene.floorNames[floor - 1]}。`, 'current-location');
+    paragraph(panel, '北在上、南在下，东在右、西在左。小地图先认自己的位置与朝向，再对照当前楼层的墙体、物件和楼梯；楼层随实际高度变化。地图不显示敌人位置，留意现场字幕与声音。');
     const list = node('ol', 'campus-map');
-    list.append(node('li', this.state.scene === 'campus' ? 'current-location' : '', `北门与校园主路 · 开放${this.state.scene === 'campus' ? ' · 你在校园' : ''}`));
+    list.append(node('li', this.state.scene === 'campus' ? 'current-location' : '', `北门与校园主路 · 开放${this.state.scene === 'campus' ? ' · 你在校园1F' : ''}`));
     for (const building of BUILDINGS) {
       const available = !building.required || Boolean(this.state.flags[building.required]);
       const current = this.state.scene === building.id;
-      const item = node('li', current ? 'current-location' : '', `${building.name} · ${available ? '已开放' : '尚未开放'}${this.state.flags[building.flag] ? ' · 本楼旧凭已核验' : ''}${current ? ' · 当前位置' : ''}`);
+      const item = node('li', current ? 'current-location' : '', `${building.name} · ${building.floors}层可探索 · ${available ? '已开放' : '尚未开放'}${this.state.flags[building.flag] ? ' · 一层主线已核验' : ''}${current ? ` · 当前位置${floor}F` : ''}`);
       if (current) item.setAttribute('aria-current', 'location');
       list.append(item);
     }
-    panel.append(list);
-    if (this.state.scene === 'tutorial') paragraph(panel, '当前位置：入夜演习。演习区域独立于正式校园路线。');
-    panel.append(node('h3', '', '下一目标'));
+    panel.append(list, node('h3', '', '下一目标 · 一层主线'));
     paragraph(panel, objective(this.state));
-    if (this.state.flags.name) paragraph(panel, '散场路线：食堂回声台 → 返回行政楼总控 → 北门。只带自己的名字离校则可直接去北门核验。');
+    if (this.state.flags.name) paragraph(panel, '散场路线：食堂1F回声台 → 返回行政楼1F总控 → 北门。只带自己的名字离校则可直接去北门核验。');
+    paragraph(panel, '行政、实验、教学楼的一层仍承担原主线；每栋2—5F是可选支线，合计十二个新增楼层，不是十二栋新楼。上层不用新切换场景，也没有传送菜单。跳过或答错支线不会锁住离校与三种结局。');
+    panel.append(node('h3', '', '三栋五层楼 · 房间用途'));
+    for (const building of BUILDINGS.filter(item => item.floors === 5)) {
+      const rooms = SCENES[building.id];
+      const details = node('details', 'journal-note');
+      details.open = this.state.scene === building.id;
+      details.append(node('summary', '', `${building.name} · 1—5F · 可选调查“${SIDE_CASES[building.id].title}”`));
+      const floors = node('ol', 'route-list');
+      rooms.floorNames.forEach((name, index) => {
+        const current = this.state.scene === building.id && floor === index + 1;
+        const use = index === 0 ? '必需主线' : index === 4 ? '总结纸条与操作复核台' : '纸背与独立实物各一项';
+        const item = node('li', current ? 'current-location' : '', `${index + 1}F ${name} · ${use}${current ? ' · 当前楼层' : ''}`);
+        if (current) item.setAttribute('aria-current', 'location');
+        floors.append(item);
+      });
+      details.append(floors);
+      panel.append(details);
+    }
+    panel.append(node('h3', '', '真实上下楼 · 南端U形楼梯'));
+    paragraph(panel, '每层入口在南端偏东（x28，z24）。上楼从左槽南口（x31.5，z23）起步，向北走到（x31.5，z6.5），经半层平台向右走到（x36.5，z6.5），再沿右槽向南走至（x36.5，z23），连续升到上一层。到南平台后向西进入本层房间；想继续上楼，回左槽南口再走一遍。');
+    paragraph(panel, '下楼反向：从右槽南口（x36.5，z23）向北走到半层平台，向左到（x31.5，z6.5），再沿左槽向南走到（x31.5，z23）。回到1F后从南侧出口返回校园。右槽、左槽说的是地图的东西两侧，不是角色转身后的左右。');
+    paragraph(panel, '每层西北纸条（x6，z6），东北操作台（x22，z6）：1F主线、2—4F实物、5F复核；南侧安全灯（x6，z22）。1F和3F另有有限温水（x9，z23）。楼梯途中不要把半层平台误当成房间，走到南端整层平台再按楼层标识进门。');
+    if (this.state.scene === 'tutorial') paragraph(panel, '教程只在独立1F练习；上面的五层路线是正式校园指引，不需要上楼或新增完成项目。');
     this.content.append(panel);
   }
 }
