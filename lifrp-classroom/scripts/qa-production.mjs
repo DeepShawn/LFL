@@ -11,13 +11,22 @@ const results = [];
 const browser = await chromium.launch({ headless: false, args: ['--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox'], env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' } });
 const click = (page, id) => page.locator(`[data-action="${id}"]`).click();
 const snapshot = page => page.evaluate(() => window.__lifrp.snapshot());
+async function clickWithRoll(page, id, roll) {
+  const button = page.locator(`[data-action="${id}"]`);
+  await button.waitFor({ state: 'visible' });
+  assert.equal(await button.isEnabled(), true);
+  await button.evaluate((node, value) => {
+    const random = Math.random;
+    try { Math.random = () => value; node.click(); }
+    finally { Math.random = random; }
+  }, roll);
+}
 
 async function start(page, mobile = false) {
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.evaluate(() => { const random = Math.random; Math.random = () => { Math.random = random; return .2; }; });
   await page.fill('#player-name', mobile ? '移动验收' : '桌面验收');
   await page.selectOption('#role-select', 'monitor');
-  await click(page, 'new-game');
+  await clickWithRoll(page, 'new-game', .2);
   await click(page, 'confirm-seat');
   await page.waitForFunction(() => window.__lifrp.metrics().loaded && window.__lifrp.metrics().totalFrames >= 5);
   const m = await page.evaluate(() => window.__lifrp.metrics());
@@ -59,16 +68,15 @@ await run('Desktop: real model, five chapters, all eight objectives and ending',
     }
     await click(page,'advance');
     for(const action of ['evidence:blackboard','evidence:experiment']) await click(page,action);
-    await page.evaluate(()=>{ const random = Math.random; Math.random = () => { Math.random = random; return .99; }; });
-    await click(page,'answer:surface-area');
+    await clickWithRoll(page,'answer:surface-area',.99);
     await page.locator('.event-chip').nth(1).click();
     for(const action of ['evidence:blackboard','evidence:textbook','go:corridor','evidence:witness','go:classroom','speak:fact','speak:clarify','speak:learn']) await click(page,action);
     await click(page,'advance');
     for(const action of ['evidence:work','go:corridor','evidence:witness','go:classroom','explain:method','difference:reasoning','submit']) await click(page,action);
     await page.locator('.event-chip').nth(1).click();
     for(const action of ['go:corridor','evidence:witness','go:office','evidence:order','go:corridor','judge:serious']) await click(page,action);
-    await page.evaluate(()=>{ const random = Math.random; Math.random = () => { Math.random = random; return .01; }; });
-    await click(page,'divert');
+    await clickWithRoll(page,'divert',.01);
+    assert.equal((await snapshot(page)).results['milk-tea'], 'success');
     await click(page,'advance');
     for(const action of ['evidence:classroom','go:office','evidence:office','go:corridor','evidence:witness','intervene:dialogue']) await click(page,action);
     await click(page,'advance');

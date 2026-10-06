@@ -8,6 +8,8 @@
 
 ## GitHub Pages
 
+**开始游戏：https://deepshawn.github.io/LFL/**
+
 Pages 根站点使用 `lifrp-classroom` 的生产构建。游戏采用 WebGL 2，支持桌面与手机浏览器，学校 GLB 经 Blender 精修、静态网格合并和 Meshopt 压缩。完整教程、结局剧透、资源处理流程及性能验收命令都在项目 README 中。
 
 完整游戏说明请阅读 [`lifrp-classroom/README.md`](./lifrp-classroom/README.md)。

@@ -4,6 +4,8 @@ LiFrP Classroom：TypeScript + Vite + Three.js 的校园解谜游戏。故事中
 
 > 本文件包含完整机制、通关步骤和结局剧透。攻略只保留在 GitHub，不复制到游戏站点。
 
+**在线游玩：https://deepshawn.github.io/LFL/**
+
 ## 环境与运行
 
 - Node.js 18.19 或更高版本；依赖由 `package-lock.json` 锁定。
