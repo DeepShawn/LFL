@@ -1,85 +1,155 @@
 import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { productionServer } from './qa-server.mjs';
 
-const baseUrl = process.env.QA_URL || 'http://localhost:5173/';
-const browser = await chromium.launch({ headless: true });
-const checks = [];
+const server = await productionServer();
+const url = server.url;
+const output = process.env.QA_OUTPUT || '/tmp/lifrp-qa-v2';
+await mkdir(output, { recursive: true });
+const results = [];
+const browser = await chromium.launch({ headless: false, args: ['--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox'], env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' } });
+const click = (page, id) => page.locator(`[data-action="${id}"]`).click();
+const snapshot = page => page.evaluate(() => window.__lifrp.snapshot());
 
-async function check(name, callback) {
-  try {
-    await callback();
-    checks.push({ name, passed: true });
-  } catch (error) {
-    checks.push({ name, passed: false, error: error.message });
-  }
+async function start(page, mobile = false) {
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.evaluate(() => { const random = Math.random; Math.random = () => { Math.random = random; return .2; }; });
+  await page.fill('#player-name', mobile ? '移动验收' : '桌面验收');
+  await page.selectOption('#role-select', 'monitor');
+  await click(page, 'new-game');
+  await click(page, 'confirm-seat');
+  await page.waitForFunction(() => window.__lifrp.metrics().loaded && window.__lifrp.metrics().totalFrames >= 5);
+  const m = await page.evaluate(() => window.__lifrp.metrics());
+  assert.equal(m.webgl, 'WebGL2');
+  assert.ok(m.meshes > 0 && m.drawCalls > 0 && m.triangles > 0, 'real GLB must be rendered');
+  assert.equal(await page.locator('.scene-fallback').count(), 0, 'fallback must not count as WebGL success');
+  return m;
 }
 
-const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const desktopErrors = [];
-desktop.on('console', (message) => {
-  if (message.type() === 'error') desktopErrors.push(message.text());
-});
-desktop.on('pageerror', (error) => desktopErrors.push(error.message));
+async function run(name, test) {
+  try { const evidence = await test(); results.push({ name, passed: true, evidence }); }
+  catch (error) { results.push({ name, passed: false, error: error.stack || error.message }); }
+}
 
-await check('desktop menu renders', async () => {
-  await desktop.goto(baseUrl, { waitUntil: 'networkidle' });
-  if ((await desktop.locator('.menu-screen').count()) !== 1) throw new Error('menu screen missing');
-  if ((await desktop.locator('button.primary-button').count()) !== 1) throw new Error('start button missing');
-});
-
-await check('desktop flow reaches classroom', async () => {
-  await desktop.fill('#player-name', 'QA 同学');
-  await desktop.click('button.primary-button');
-  await desktop.waitForSelector('.seat-screen');
-  if ((await desktop.locator('.seat-option').count()) < 1) throw new Error('seat options missing');
-  await desktop.locator('.seat-option').first().click();
-  await desktop.click('.seat-footer .primary-button');
-  await desktop.waitForSelector('#game-shell');
-  await desktop.waitForSelector('#game-canvas');
-});
-
-await check('desktop view switch and event action work', async () => {
-  await desktop.click('.icon-button[title="切换 2D / 3D"]');
-  await desktop.waitForTimeout(100);
-  if (!(await desktop.locator('.view-chip').innerText()).includes('视角切换中')) throw new Error('view switch state missing');
-  await desktop.locator('.action-button').first().click();
-  if ((await desktop.locator('.toast').count()) !== 1) throw new Error('toast missing');
-});
-
-await check('desktop console is clean', async () => {
-  if (desktopErrors.length) throw new Error(desktopErrors.join('\n'));
-});
-
-const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-const mobileErrors = [];
-mobile.on('console', (message) => {
-  if (message.type() === 'error') mobileErrors.push(message.text());
-});
-mobile.on('pageerror', (error) => mobileErrors.push(error.message));
-
-await check('mobile layout has no horizontal overflow', async () => {
-  await mobile.goto(baseUrl, { waitUntil: 'networkidle' });
-  const dimensions = await mobile.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
-  if (dimensions.width !== dimensions.viewport) throw new Error(`horizontal overflow ${dimensions.width}/${dimensions.viewport}`);
-});
-
-await check('mobile flow exposes controls', async () => {
-  await mobile.fill('#player-name', '移动 QA');
-  await mobile.click('button.primary-button');
-  await mobile.waitForSelector('.seat-screen');
-  await mobile.locator('.seat-option').first().click();
-  await mobile.click('.seat-footer .primary-button');
-  await mobile.waitForSelector('#game-shell');
-  if ((await mobile.locator('.mobile-controls').count()) !== 1) throw new Error('mobile controls missing');
-});
-
-await check('mobile console is clean', async () => {
-  if (mobileErrors.length) throw new Error(mobileErrors.join('\n'));
+await run('Desktop: real model, five chapters, all eight objectives and ending', async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const errors = [], requests = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+  page.on('response', response => { if (response.url().includes('.glb')) requests.push({ url: response.url(), status: response.status() }); });
+  try {
+    const initial = await start(page);
+    await page.screenshot({ path: `${output}/desktop-map.png` });
+    await click(page, 'view');
+    await page.waitForFunction(() => window.__lifrp.snapshot().switchRemaining === 0);
+    const before = await snapshot(page);
+    await page.keyboard.down('KeyW');
+    await page.waitForFunction(z => Math.abs(window.__lifrp.snapshot().position.z - z) > .2, before.position.z);
+    await page.keyboard.up('KeyW');
+    await page.screenshot({ path: `${output}/desktop-first-person.png` });
+    await click(page, 'view');
+    for (const action of ['inspect:q2','inspect:q5','solve:q2:44','solve:q5:balanced','submit']) await click(page, action);
+    await page.locator('.event-chip').nth(1).click();
+    const target=(await snapshot(page)).data.snacking.target;
+    for(let i=0;i<target;i++) {
+      await page.waitForFunction(() => { const g=window.__lifrp.snapshot();return !g.data.snacking.watching && g.data.snacking.watchRemaining>1.8 && g.data.snacking.biteRemaining<=0; });
+      await click(page,'snack');
+      assert.equal((await snapshot(page)).data.snacking.eaten,i+1);
+    }
+    await click(page,'advance');
+    for(const action of ['evidence:blackboard','evidence:experiment']) await click(page,action);
+    await page.evaluate(()=>{ const random = Math.random; Math.random = () => { Math.random = random; return .99; }; });
+    await click(page,'answer:surface-area');
+    await page.locator('.event-chip').nth(1).click();
+    for(const action of ['evidence:blackboard','evidence:textbook','go:corridor','evidence:witness','go:classroom','speak:fact','speak:clarify','speak:learn']) await click(page,action);
+    await click(page,'advance');
+    for(const action of ['evidence:work','go:corridor','evidence:witness','go:classroom','explain:method','difference:reasoning','submit']) await click(page,action);
+    await page.locator('.event-chip').nth(1).click();
+    for(const action of ['go:corridor','evidence:witness','go:office','evidence:order','go:corridor','judge:serious']) await click(page,action);
+    await page.evaluate(()=>{ const random = Math.random; Math.random = () => { Math.random = random; return .01; }; });
+    await click(page,'divert');
+    await click(page,'advance');
+    for(const action of ['evidence:classroom','go:office','evidence:office','go:corridor','evidence:witness','intervene:dialogue']) await click(page,action);
+    await click(page,'advance');
+    for(const action of ['schedule:balanced','track','study','track','study','holiday:next-day','schedule:balanced','track','study','track','study','holiday:next-day','schedule:balanced','rest','track','study','submit']) await click(page,action);
+    const ended = await snapshot(page);
+    assert.equal(ended.phase,'ending');
+    assert.ok(['perfect','ordinary'].includes(ended.outcome));
+    assert.equal(Object.values(ended.results).filter(x=>x==='success').length,8);
+    assert.deepEqual(errors,[]);
+    assert.ok(requests.length >= 3 && requests.every(x=>x.status===200));
+    await page.screenshot({path:`${output}/ending.png`});
+    await click(page,'home');
+    await click(page,'continue');
+    await page.waitForSelector('[data-action=home]');
+    assert.equal((await snapshot(page)).outcome,ended.outcome);
+    return { initial, outcome: ended.outcome, successfulEvents:8, glbRequests:requests };
+  } finally { await page.close(); }
 });
 
-await desktop.close();
-await mobile.close();
+await run('Mobile portrait/landscape: WebGL2, touch movement, controls, saving, rendering after resume', async()=>{
+  const context = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});
+  const page = await context.newPage();const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('console',e=>{if(e.type()==='error')errors.push(e.text())});
+  try {
+    const initial=await start(page,true);
+    assert.equal(initial.assetTier,'mobile');
+    const width=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));
+    assert.equal(width.scroll,width.client);
+    const p0=(await snapshot(page)).position;
+    const rect=await page.locator('#joystick').boundingBox();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: rect.x+rect.width/2, y: rect.y+rect.height/2-25, id: 1 }] });
+    await page.waitForFunction(p=>Math.hypot(window.__lifrp.snapshot().position.x-p.x,window.__lifrp.snapshot().position.z-p.z)>.15,p0);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.screenshot({path:`${output}/mobile-portrait.png`});
+    await page.setViewportSize({width:844,height:390});
+    await page.screenshot({path:`${output}/mobile-landscape.png`});
+    await click(page,'settings');
+    const elapsed=(await snapshot(page)).elapsed;
+    await page.waitForTimeout(500);
+    assert.equal((await snapshot(page)).elapsed,elapsed,'settings pause simulation');
+    await page.selectOption('select[aria-label="画质"]','low');
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.waitForFunction(()=>window.__lifrp.metrics().quality==='low' && window.__lifrp.metrics().loaded);
+    await click(page,'settings');
+    await page.getByRole('button',{name:'保存并返回菜单'}).click();
+    await click(page,'continue');
+    await page.waitForFunction(()=>window.__lifrp.metrics().loaded && window.__lifrp.metrics().totalFrames>5);
+    assert.ok((await snapshot(page)).elapsed >= elapsed);
+    assert.deepEqual(errors,[]);
+    return {initial, resumed:await page.evaluate(()=>window.__lifrp.metrics()),errors};
+  } finally { await context.close(); }
+});
+await run('Chase, failure settlement and isolated day save', async () => {
+  const context = await browser.newContext({ viewport: { width: 960, height: 600 } });
+  const page = await context.newPage();
+  const errors=[];page.on('pageerror', e=>errors.push(e.message));
+  try {
+    await start(page);
+    const initial=await snapshot(page);
+    const fixture={...initial, mode:'day', difficulty:'terror', phase:'chase', room:'corridor', view:'first-person', position:{x:9.5,z:-.9}, chase:{remaining:18,distance:5,goalRoom:'office'}, currentEvent:'milk-tea', events:['milk-tea'], results:{...initial.results,'milk-tea':'pending'}, data:structuredClone(initial.data)};
+    fixture.data['milk-tea'].stage='evasion';fixture.data['milk-tea'].routeStarted=true;
+    await page.evaluate(f=>localStorage.setItem('lifrp-classroom:v2:day',JSON.stringify({version:2,game:f})),fixture);
+    await page.reload();await page.getByRole('button',{name:/一天生存/}).click();await click(page,'continue');
+    await page.waitForFunction(()=>window.__lifrp.metrics().loaded);
+    await page.keyboard.press('KeyE');
+    await page.waitForFunction(()=>window.__lifrp.snapshot().phase==='ending');
+    const escaped=await snapshot(page);assert.equal(escaped.room,'office');assert.equal(escaped.results['milk-tea'],'success');
+    const failed={...fixture,position:{x:0,z:0},chase:{remaining:.15,distance:5,goalRoom:'office'}};
+    await click(page,'home');
+    await page.evaluate(f=>localStorage.setItem('lifrp-classroom:v2:day',JSON.stringify({version:2,game:f})),failed);
+    await page.reload();await page.getByRole('button',{name:/一天生存/}).click();await click(page,'continue');
+    await page.waitForFunction(()=>window.__lifrp.snapshot().phase==='ending');
+    assert.equal((await snapshot(page)).outcome,'terror');
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('lifrp-classroom:v2:chapters')).game.mode),'chapters');
+    assert.deepEqual(errors,[]);
+    return { physicalDoorEscape:escaped.outcome, chaseTimeout:'terror', chapterSaveIntact:true };
+  } finally { await context.close(); }
+});
 await browser.close();
-
-const failed = checks.filter((check) => !check.passed);
-console.log(JSON.stringify({ baseUrl, checks }, null, 2));
-if (failed.length) process.exitCode = 1;
+await server.close();
+await writeFile(`${output}/results.json`,JSON.stringify({url,softwareRenderer:true,results},null,2));
+console.log(JSON.stringify({url,softwareRenderer:true,results},null,2));
+if(results.some(x=>!x.passed))process.exitCode=1;

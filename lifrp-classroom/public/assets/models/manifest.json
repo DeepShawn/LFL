@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "codec": "EXT_meshopt_compression",
+  "tiers": {
+    "desktop": {
+      "classroom": {
+        "path": "assets/models/desktop/classroom.glb",
+        "bytes": 479980,
+        "inputBytes": 1431272,
+        "primitives": 20,
+        "triangles": 17188,
+        "materials": 17,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "corridor": {
+        "path": "assets/models/desktop/corridor.glb",
+        "bytes": 344692,
+        "inputBytes": 601592,
+        "primitives": 13,
+        "triangles": 4848,
+        "materials": 11,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "office": {
+        "path": "assets/models/desktop/office.glb",
+        "bytes": 320976,
+        "inputBytes": 468464,
+        "primitives": 11,
+        "triangles": 2604,
+        "materials": 10,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "exterior_block": {
+        "path": "assets/models/desktop/exterior_block.glb",
+        "bytes": 290028,
+        "inputBytes": 355092,
+        "primitives": 10,
+        "triangles": 1284,
+        "materials": 10,
+        "textures": 3,
+        "validationErrors": 0
+      }
+    },
+    "mobile": {
+      "classroom": {
+        "path": "assets/models/mobile/classroom.glb",
+        "bytes": 211060,
+        "inputBytes": 803244,
+        "primitives": 20,
+        "triangles": 10984,
+        "materials": 17,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "corridor": {
+        "path": "assets/models/mobile/corridor.glb",
+        "bytes": 113600,
+        "inputBytes": 208476,
+        "primitives": 13,
+        "triangles": 2160,
+        "materials": 11,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "office": {
+        "path": "assets/models/mobile/office.glb",
+        "bytes": 100876,
+        "inputBytes": 156000,
+        "primitives": 11,
+        "triangles": 1068,
+        "materials": 10,
+        "textures": 3,
+        "validationErrors": 0
+      },
+      "exterior_block": {
+        "path": "assets/models/mobile/exterior_block.glb",
+        "bytes": 97844,
+        "inputBytes": 163016,
+        "primitives": 10,
+        "triangles": 1284,
+        "materials": 10,
+        "textures": 3,
+        "validationErrors": 0
+      }
+    }
+  }
+}

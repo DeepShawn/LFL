@@ -1,26 +1,35 @@
 {
   "name": "lifrp-classroom",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node node_modules/vite/bin/vite.js",
     "build": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/vite/bin/vite.js build",
     "preview": "node node_modules/vite/bin/vite.js preview",
-    "test": "node --test src/simulation/*.test.mjs",
-    "test:watch": "node --test src/simulation/*.test.mjs",
+    "test": "node --test src/simulation/*.test.mjs && node node_modules/vitest/vitest.mjs run src/render/rendering.test.ts src/simulation/game.test.ts",
+    "test:watch": "node node_modules/vitest/vitest.mjs src/render/rendering.test.ts src/simulation/game.test.ts",
+    "assets:refine": "blender --background --factory-startup --python scripts/refine-models.py",
+    "assets:optimize": "node scripts/optimize-assets.mjs",
+    "qa:performance": "xvfb-run -a node scripts/qa-performance.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "assets:validate": "node scripts/validate-assets.mjs",
-    "qa:production": "node scripts/qa-production.mjs"
+    "qa:production": "xvfb-run -a node scripts/qa-production.mjs"
   },
   "dependencies": {
-    "three": "^0.180.0"
+    "three": "0.180.0"
   },
   "devDependencies": {
-    "@types/three": "^0.180.0",
-    "typescript": "^5.6.3",
-    "vite": "^6.1.0",
-    "vitest": "^3.0.0",
-    "playwright": "^1.61.1"
+    "@types/three": "0.180.0",
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vitest": "3.2.7",
+    "playwright": "1.61.1",
+    "@gltf-transform/cli": "4.1.1",
+    "@gltf-transform/core": "4.1.1",
+    "@gltf-transform/extensions": "4.1.1",
+    "@gltf-transform/functions": "4.1.1",
+    "meshoptimizer": "0.22.0",
+    "gltf-validator": "2.0.0-dev.3.10"
   }
 }
