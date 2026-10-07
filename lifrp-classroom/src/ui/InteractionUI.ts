@@ -20,10 +20,14 @@ export class InteractionUI {
   private expanded = false;
   private overlay: HTMLDialogElement | null = null;
   private contextSignature = '';
+  private lastPromptId = '';
 
   constructor(private readonly root: HTMLElement, private readonly onAction: (id: string) => void, private readonly onModalChange: (open: boolean, pausesWorld: boolean) => void = () => {}) {}
 
   renderContext(prompt: ContextPrompt | null, actions: ContextAction[]) {
+    const promptId = prompt?.id || '';
+    if (promptId !== this.lastPromptId) this.expanded = false;
+    this.lastPromptId = promptId;
     const signature = `${prompt?.id || ''}|${prompt?.label || ''}|${prompt?.hint || ''}|${this.expanded}|${actions.map(action => `${action.id}:${action.label}:${Boolean(action.disabled)}`).join(';')}`;
     if (signature === this.contextSignature) return;
     this.contextSignature = signature;

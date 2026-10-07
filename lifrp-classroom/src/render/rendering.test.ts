@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createWebGLContext, getQualityProfile } from './qualityProfiles';
 import { PerformanceMonitor } from './performanceMonitor';
 import { moveWithinRoom } from '../world/collision';
+import { createCharacter } from './characters';
 
 describe('WebGL 2 and quality', () => {
   it('requests only WebGL 2 on the render canvas, with no WebGL 1 probe', () => {
@@ -62,5 +63,21 @@ describe('shared walk collision', () => {
     };
     expect(moveWithinRoom({ x: 0, z: -3.1 }, 0, .8, office).z).toBeLessThanOrEqual(-1.04);
     expect(moveWithinRoom({ x: 0, z: -3.1 }, 2.8, 0, office).x).toBeCloseTo(2.8);
+  });
+});
+
+describe('character detail', () => {
+  it('keeps distinct student silhouettes and a detailed office teacher marker', () => {
+    const student = createCharacter({ kind: 'student', variant: 1, name: 'student-detail' });
+    const officeTeacher = createCharacter({ kind: 'teacher', variant: 2, style: 'office', name: 'teacher-office-detail' });
+    const studentNames: string[] = [];
+    student.traverse(node => studentNames.push(node.name));
+    const teacherNames: string[] = [];
+    officeTeacher.traverse(node => teacherNames.push(node.name));
+    expect(studentNames).toContain('student-badge');
+    expect(studentNames).toContain('ponytail');
+    expect(teacherNames).toContain('glasses');
+    expect(teacherNames).toContain('teacher-badge');
+    expect(officeTeacher.userData.teacherStyle).toBe('office');
   });
 });

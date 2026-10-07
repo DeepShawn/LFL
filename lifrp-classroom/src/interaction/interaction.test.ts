@@ -26,7 +26,9 @@ describe('scene interaction contract', () => {
     expect(controller.snapshot.canOperate).toBe(true);
     expect(controller.operate('inspect:q2')).toBe(true);
     expect(controller.operate('inspect:q2')).toBe(false);
-    expect(submitted).toEqual(['inspect:q2']);
+    controller.release('inspect:q2', 'classroom:desk');
+    expect(controller.operate('inspect:q2')).toBe(true);
+    expect(submitted).toEqual(['inspect:q2', 'inspect:q2']);
   });
 
   it('rejects stale room targets before the event state machine runs', () => {
@@ -45,6 +47,13 @@ describe('scene interaction contract', () => {
     expect(state.room).toBe('office');
   });
 
+  it('keeps the chemistry representative task on the desk target', () => {
+    const state = createGame({ ...options, role: 'chemistry-rep' }, () => 0);
+    const result = actInteraction(state, 'classroom:desk', 'rep:inspect', () => 0);
+    expect(result.tone).toBe('quiet');
+    expect(state.data['homework-correction'].marked).toEqual(['q2', 'q5']);
+  });
+
   it('finds a reachable waypoint path and rejects a blocked direct segment', () => {
     const room = { bounds: [-5, 5, -4, 4] as [number, number, number, number], obstacles: [[-1, 1, -1, 1] as [number, number, number, number]] };
     expect(segmentClear({ x: -2, z: 2 }, { x: 2, z: -2 }, room)).toBe(false);
@@ -52,6 +61,7 @@ describe('scene interaction contract', () => {
     expect(path).not.toBeNull();
     expect(path?.at(-1)).toEqual({ x: 2, z: -2 });
     expect(targetById('classroom:desk')?.room).toBe('classroom');
+    expect(targetById('classroom:desk')?.actionIds).toContain('rep:inspect');
   });
 
   it('keeps the office doorway reachable without removing office cubicle blockers', () => {

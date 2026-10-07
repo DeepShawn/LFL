@@ -367,7 +367,11 @@ function beginContextAction(action: string, prompt: InteractionPrompt | Interact
     say(available?.label || '当前目标暂时不能执行这个操作。', 'warning');
     return;
   }
-  if (action.startsWith('go:')) { void transitionRoom(target.targetRoom || action.slice(3) as Room, target.id); return; }
+  if (action.startsWith('go:')) {
+    void transitionRoom(target.targetRoom || action.slice(3) as Room, target.id)
+      .finally(() => interactionController?.release(action, target.id));
+    return;
+  }
   if (!available) return;
   const confirm = () => { doAction(action, target.id); interactionController?.release(action, target.id); };
   if (action.startsWith('inspect:') || action.startsWith('evidence:') || action.startsWith('solve:') || action === 'submit' || action === 'track' || action === 'study' || action === 'rest' || action.startsWith('schedule:') || action === 'holiday:next-day') {

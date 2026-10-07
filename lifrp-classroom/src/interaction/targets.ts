@@ -24,7 +24,7 @@ export const INTERACTION_TARGETS: InteractionTarget[] = [
   {
     id: 'classroom:desk', room: 'classroom', kind: 'object', label: '自己的课桌',
     hint: '打开作业本、抽屉或桌面的实验记录', x: 0, z: .55, range: 1.8, observeRange: 3.2,
-    actionIds: ['inspect:q2', 'inspect:q5', 'solve:q2:44', 'solve:q2:32', 'solve:q5:balanced', 'solve:q5:unbalanced', 'evidence:work', 'evidence:experiment', 'evidence:textbook', 'explain:method', 'difference:reasoning', 'difference:wrong-answer', 'snack', 'schedule:balanced', 'schedule:focused', 'track', 'study', 'rest', 'holiday:next-day', 'submit'],
+    actionIds: ['rep:inspect', 'inspect:q2', 'inspect:q5', 'solve:q2:44', 'solve:q2:32', 'solve:q5:balanced', 'solve:q5:unbalanced', 'evidence:work', 'evidence:experiment', 'evidence:textbook', 'explain:method', 'difference:reasoning', 'difference:wrong-answer', 'snack', 'schedule:balanced', 'schedule:focused', 'track', 'study', 'rest', 'holiday:next-day', 'submit'],
   },
   {
     id: 'classroom:board', room: 'classroom', kind: 'object', label: '黑板与讲台',

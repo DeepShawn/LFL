@@ -51,7 +51,7 @@ export class WorldRenderer {
   private portals = new THREE.Group();
   private interactables = new THREE.Group();
   private teacher = createCharacter({ kind: 'teacher', variant: 0, name: 'teacher-classroom' });
-  private officeTeacher = createCharacter({ kind: 'teacher', variant: 2, name: 'teacher-office' });
+  private officeTeacher = createCharacter({ kind: 'teacher', variant: 2, style: 'office', name: 'teacher-office' });
   private students = new THREE.Group();
   private studentCharacters: THREE.Object3D[] = [];
   private player = new THREE.Mesh(new THREE.ConeGeometry(.13, .45, 8), new THREE.MeshBasicMaterial({ color: 0xf4bb79 }));
@@ -239,7 +239,7 @@ export class WorldRenderer {
   }
 
   private positionCharacters(room: Room) {
-    const classroom = [[-3.45, 1.8], [-2.15, 1.8], [1.55, 1.8], [2.85, 1.8], [-2.8, .35], [2.25, .35]];
+    const classroom = [[-3.45, 1.8], [-2.15, 1.8], [-1.05, 1.8], [1.55, 1.8], [2.85, 1.8], [-2.8, .35], [.95, .35], [2.25, .35]];
     const corridor = [[-3.25, .08], [2.65, -.08]];
     const office = [[-2.75, -3.05]];
     const positions = room === 'classroom' ? classroom : room === 'corridor' ? corridor : office;
