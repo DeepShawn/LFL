@@ -25,12 +25,14 @@ let lastSaveSecond = -1;
 let gameGeneration = 0;
 let notice = '';
 let storedNotice = '';
+let playerName = '';
 try {
   highestChapter = Math.max(1, Math.min(6, Number(localStorage.getItem(`${SAVE}progress`)) || 1));
   const settings = JSON.parse(localStorage.getItem(`${SAVE}settings`) || '{}');
   quality = ['auto', 'high', 'medium', 'low'].includes(settings.quality) ? settings.quality : 'auto';
   audio.speech = settings.speech === true;
   audio.sound = settings.sound !== false;
+  playerName = localStorage.getItem(`${SAVE}player-name`) || '';
 } catch { storedNotice = '本地存储暂不可用，本次可以游玩，但无法保证刷新后恢复。'; }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, unknown> = {}, children: (Node | string)[] = []): HTMLElementTagNameMap[K] {
@@ -81,11 +83,22 @@ function showMenu() {
   world?.dispose(); world = null;
   audio.pause();
   screen = 'menu';
-  const name = element('input', { id: 'player-name', maxlength: 18, placeholder: '输入称呼（只保存在本机）', autocomplete: 'off' });
+  const name = element('input', { id: 'player-name', maxlength: 18, placeholder: '输入称呼（只保存在本机）', autocomplete: 'nickname', value: playerName });
   const role = element('select', { id: 'role-select' }, Object.entries(ROLE_NAMES).map(([value, label]) => element('option', { value, text: label })));
   const modeList = element('div', { class: 'mode-list' });
+  const selectionSummary = element('div', { class: 'selection-summary', role: 'status', 'aria-live': 'polite' });
   const resume = button('继续当前模式存档', () => { const saved = savedGame(selectedMode); if (saved) { game = saved; void enterPlay(); } }, 'secondary-button', 'continue');
   const descriptions = { chapters: '五章课堂与多日假期，逐步展开全部事件。', day: '完成一天的课表，带着作业安全离校。', challenge: '第一章之后解锁，每局固定一组随机事件。' };
+  const refreshSummary = () => {
+    const region = app.querySelector<HTMLInputElement>('input[name=region]:checked')?.value === 'back' ? '后三排' : '前三排';
+    const roleLabel = ROLE_NAMES[role.value as GameState['role']];
+    const modeLabel = MODE_NAMES[selectedMode];
+    selectionSummary.replaceChildren(
+      element('span', { class: 'summary-label', text: '本次登记' }),
+      element('strong', { text: `${region} · ${roleLabel}` }),
+      element('span', { text: `${modeLabel} · 下一步确认具体座位` }),
+    );
+  };
   const refreshModes = () => {
     modeList.replaceChildren(...(Object.keys(MODE_NAMES) as GameState['mode'][]).map((mode, index) => {
       const node = button('', () => { selectedMode = mode; refreshModes(); }, `mode-card ${mode === selectedMode ? 'selected' : ''}`);
@@ -95,10 +108,15 @@ function showMenu() {
       return node;
     }));
     resume.disabled = !savedGame(selectedMode);
+    refreshSummary();
   };
   refreshModes();
+  role.addEventListener('change', refreshSummary);
+  name.addEventListener('input', () => { playerName = name.value.trim(); });
   const start = () => {
     const region = app.querySelector<HTMLInputElement>('input[name=region]:checked')!.value as GameState['region'];
+    playerName = name.value.trim() || '无名同学';
+    try { localStorage.setItem(`${SAVE}player-name`, playerName); } catch { /* Private browsing may disable storage. */ }
     const options = { name: name.value.trim() || '无名同学', mode: selectedMode, role: role.value as GameState['role'], region, difficulty: pickDifficulty() as GameState['difficulty'], unlockedChapter: highestChapter };
     screen = 'seats';
     showSeats(options);
@@ -114,6 +132,7 @@ function showMenu() {
     ]))),
     element('label', { class: 'field-label', for: 'role-select', text: '班级身份' }), role,
     element('div', { class: 'field-label', text: '选择模式' }), modeList,
+    selectionSummary,
     element('div', { class: 'menu-actions' }, [button('开始新游戏', start, 'primary-button', 'new-game'), resume]),
     element('p', { class: 'menu-note', text: '难度每局隐藏随机；重新开始不会改变其他模式存档。配音默认关闭，可在设置中开启。' }),
     button('设置 / 画质与声音', openSettings, 'text-button'),
@@ -130,6 +149,7 @@ function showMenu() {
     ]), panel,
     element('footer', { class: 'menu-footer' }, [element('span', { text: 'LIFRP / 雨前最后一题' }), element('span', { text: '完整版 · WebGL 2' })]),
   ]));
+  app.querySelectorAll<HTMLInputElement>('input[name=region]').forEach(input => input.addEventListener('change', refreshSummary));
 }
 
 type StartOptions = Omit<Parameters<typeof createGame>[0], 'seat'>;
@@ -151,6 +171,9 @@ function showSeats(options: StartOptions) {
   };
   refresh();
   app.replaceChildren(element('main', { class: 'seat-screen' }, [
+    element('div', { class: 'stepper', 'aria-label': '开局步骤' }, [
+      element('span', { class: 'done', text: '01 登记' }), element('span', { class: 'current', text: '02 落座' }), element('span', { text: '03 探索' }),
+    ]),
     element('div', { class: 'eyebrow', text: '落座 / THE REGISTER' }),
     element('h1', { text: options.region === 'front' ? '前三排' : '后三排' }),
     element('p', { class: 'seat-lede', text: options.region === 'front' ? '已随机安排位置。可以保留原位，或向左右相邻座位调整一次。' : '名单上只有名字。请从本局候选位置中选择。' }), grid,
@@ -179,12 +202,17 @@ async function enterPlay() {
         button('3D', switchView, 'icon-button', 'view'),
         button('事件', () => { panelOpen = !panelOpen; panel.hidden = !panelOpen; }, 'icon-button', 'panel'),
         button('记录', openJournal, 'icon-button', 'journal'),
+        button('帮助', openHelp, 'icon-button', 'help'),
         button('全屏', () => void fullScreen(), 'icon-button', 'fullscreen'),
         button('设置', openSettings, 'icon-button', 'settings'),
       ]),
     ]),
     element('aside', { class: 'objective-cluster' }, [
       element('span', { class: 'section-kicker', id: 'room-label' }), element('h2', { id: 'objective-title' }),
+      element('div', { class: 'completion-meter' }, [
+        element('div', { class: 'meter-header' }, [element('span', { text: '今日进度' }), element('strong', { id: 'completion-label', text: '0%' })]),
+        element('div', { class: 'meter-track' }, [element('span', { id: 'completion-meter-fill' })]),
+      ]),
       element('div', { class: 'status-row' }, ['完成', '怀疑', '心理'].map((label, i) => element('div', { class: 'status-pill' }, [element('span', { class: 'status-label', text: label }), element('strong', { id: `status-${i}` })]))),
       element('span', { class: 'view-chip', id: 'view-label' }),
     ]),
@@ -192,7 +220,7 @@ async function enterPlay() {
     element('div', { id: 'scene-status', class: 'scene-status', role: 'status' }),
     element('div', { class: 'crosshair', 'aria-hidden': true }), panel,
     element('div', { id: 'toast', class: 'toast', role: 'status', 'aria-live': 'polite', text: notice }),
-    element('div', { class: 'control-hint', text: 'WASD 移动 · 拖拽转向 · E 交互 · V 切换视角 · 俯视点地面移动' }),
+    element('div', { class: 'control-hint', text: 'WASD 移动 · 拖拽转向 · E 交互 · V 切换视角 · I 事件面板' }),
     element('div', { class: 'mobile-controls' }, [
       element('div', { id: 'joystick', class: 'virtual-stick', role: 'group', 'aria-label': '移动摇杆' }, [element('span', { class: 'stick-knob' })]),
       button('交互', () => world?.interact(), 'touch-interact', 'interact'),
@@ -263,8 +291,13 @@ function updateHud() {
   set('status-0', game.completion >= 100 ? '已达标' : game.completion >= 75 ? '接近' : game.completion >= 25 ? '进行中' : '待完成');
   set('status-1', getStatusTier(game.suspicion)); set('status-2', getStatusTier(game.pressure));
   set('view-label', game.switchRemaining > 0 ? '切换中 · 无法移动' : game.phase === 'chase' ? `追逐 · 前往${ROOM_NAMES[game.chase!.goalRoom]}` : `${game.view === 'map' ? '斜俯视地图' : '第一人称'} · ${Math.ceil(game.eventRemaining)} 秒`);
+  set('completion-label', `${Math.round(game.completion)}%`);
+  const completionFill = document.getElementById('completion-meter-fill');
+  if (completionFill) completionFill.style.width = `${Math.max(0, Math.min(100, game.completion))}%`;
   const switchButton = document.querySelector<HTMLButtonElement>('[data-action=view]');
-  if (switchButton) { switchButton.textContent = game.view === 'map' ? '3D' : '2D'; switchButton.disabled = game.switchRemaining > 0; }
+  if (switchButton) { switchButton.textContent = game.view === 'map' ? '3D' : '2D'; switchButton.disabled = game.switchRemaining > 0; switchButton.setAttribute('aria-label', `切换到${game.view === 'map' ? '第一人称' : '斜俯视地图'}`); }
+  const panelButton = document.querySelector<HTMLButtonElement>('[data-action=panel]');
+  panelButton?.setAttribute('aria-expanded', String(panelOpen));
   document.querySelector('#game-shell')?.classList.toggle('is-first-person', game.view === 'first-person');
   document.querySelector('#game-shell')?.classList.toggle('is-chase', game.phase === 'chase');
   for (let i = 1; i <= 2; i++) document.getElementById(`status-${i}`)?.parentElement?.setAttribute('data-tier', String(Math.min(3, Math.floor((i === 1 ? game.suspicion : game.pressure) / 25))));
@@ -294,7 +327,7 @@ function renderEvent() {
   } else {
     const objectives = getObjectives(g);
     panel.replaceChildren(element('div', { class: 'drawer-rule' }),
-      element('div', { class: 'event-heading' }, [element('h3', { text: details(g.currentEvent)?.label || g.currentEvent }), button('收起', () => { panelOpen = false; panel.hidden = true; }, 'text-button')]),
+      element('div', { class: 'event-heading' }, [element('div', { class: 'event-title-wrap' }, [element('span', { class: 'event-index', text: `事件 ${String(g.events.indexOf(g.currentEvent) + 1).padStart(2, '0')} / ${String(g.events.length).padStart(2, '0')}` }), element('h3', { text: details(g.currentEvent)?.label || g.currentEvent })]), button('收起', () => { panelOpen = false; panel.hidden = true; updateHud(); }, 'text-button')]),
       element('ul', { class: 'objectives' }, objectives.map(text => element('li', { text }))),
       element('div', { class: 'button-grid' }, getActions(g).filter(action => !action.id.startsWith('event:') && action.id !== 'switch-view').map(action => {
         const node = button(action.label, () => doAction(action.id), 'action-button', action.id); node.disabled = !!action.disabled; return node;
@@ -357,12 +390,33 @@ function openJournal() {
   dialog('课堂记录', [element('ol', { class: 'journal' }, game.history.slice(-40).map(text => element('li', { text }))),
     element('p', { text: '操作：WASD / 左侧摇杆移动，拖动画面转向，E / 交互按钮调查。俯视点击地面移动，走近金色门标记后交互。' })]);
 }
+function openHelp() {
+  dialog('操作指南', [
+    element('div', { class: 'shortcut-grid' }, [
+      element('span', { text: '移动' }), element('strong', { text: 'WASD / 方向键' }),
+      element('span', { text: '视角' }), element('strong', { text: 'V 或顶部按钮' }),
+      element('span', { text: '交互' }), element('strong', { text: 'E / 交互按钮' }),
+      element('span', { text: '事件面板' }), element('strong', { text: 'I / 事件按钮' }),
+      element('span', { text: '地图移动' }), element('strong', { text: '俯视图点击地面' }),
+    ]),
+    element('p', { text: '接近金色门标记后交互即可进入相邻房间。追逐阶段必须实际走到目标房间，不能用事件面板跳转。' }),
+  ]);
+}
 async function fullScreen() {
   try { if (document.fullscreenElement) await document.exitFullscreen(); else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); else say('此浏览器不支持网页全屏；可横屏游玩或添加到主屏幕。'); }
   catch { say('浏览器未允许全屏，请直接横屏游玩。'); }
 }
 window.addEventListener('pagehide', () => { save(); world?.stop(); audio.pause(); });
 window.addEventListener('pageshow', () => { if (game && screen === 'play') world?.start(game); });
+window.addEventListener('keydown', event => {
+  if (screen !== 'play' || event.repeat || (event.target as HTMLElement).closest('input,select,textarea,dialog')) return;
+  if (event.code === 'KeyI') {
+    panelOpen = !panelOpen;
+    const panel = document.querySelector<HTMLElement>('#event-drawer');
+    if (panel) panel.hidden = !panelOpen;
+    updateHud();
+  }
+});
 Object.defineProperty(window, '__lifrp', { value: {
   metrics: () => world?.metrics() || { loaded: false, webgl: null },
   snapshot: () => game ? JSON.parse(JSON.stringify(game)) : null,
