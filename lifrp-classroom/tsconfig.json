@@ -17,6 +17,6 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src/main.ts", "src/render/**/*.ts", "src/world/**/*.ts", "src/audio/**/*.ts", "src/simulation/game.ts", "src/simulation/types.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.mjs", "src/vendor"]
 }

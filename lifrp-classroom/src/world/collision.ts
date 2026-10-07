@@ -14,3 +14,15 @@ export function moveWithinRoom(position: { x: number; z: number }, dx: number, d
   }
   return { x, z };
 }
+
+export function hasLineOfSight(from: { x: number; z: number }, to: { x: number; z: number }, room: CollisionRoom) {
+  const distance = Math.hypot(to.x - from.x, to.z - from.z);
+  const steps = Math.max(1, Math.ceil(distance / .12));
+  const blocked = (px: number, pz: number) => room.obstacles.some(([left, right, back, front]) =>
+    px > left - .08 && px < right + .08 && pz > back - .08 && pz < front + .08);
+  for (let index = 1; index < steps; index++) {
+    const t = index / steps;
+    if (blocked(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t)) return false;
+  }
+  return true;
+}

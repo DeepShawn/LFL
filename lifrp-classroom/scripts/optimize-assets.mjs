@@ -45,7 +45,10 @@ for (const name of ['classroom', 'corridor', 'office']) {
   for (const node of gltf.nodes) {
     if (!/Desk.*Top|TeacherDesk_Base|Partition|Cabinet/i.test(node.name || '') || node.mesh === undefined) continue;
     const accessor = gltf.accessors[gltf.meshes[node.mesh].primitives[0].attributes.POSITION];
-    if (accessor.max[1] > .3) obstacles.push([accessor.min[0], accessor.max[0], accessor.min[2], accessor.max[2]]);
+    // The central office doorway is an intentional opening in the rear partition.
+    // Keep the visual mesh, but do not turn that doorway into a solid navigation wall.
+    const doorway = name === 'office' && accessor.min[0] < 1.2 && accessor.max[0] > -1.2 && accessor.max[2] > 2.6;
+    if (accessor.max[1] > .3 && !doorway) obstacles.push([accessor.min[0], accessor.max[0], accessor.min[2], accessor.max[2]]);
   }
   collision[name] = { bounds: name === 'classroom' ? [-4.8, 4.8, -3.85, 4] : name === 'office' ? [-4.4, 4.4, -3.6, 3.6] : [-10.7, 10.7, -1.35, 1.35], obstacles };
 }

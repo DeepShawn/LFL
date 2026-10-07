@@ -2,6 +2,7 @@ import { DIFFICULTY_CONFIG, adjustProbability } from './difficulty.js';
 import { getDistractionChance, getRoleUses } from './roles.js';
 import { getUnlocksAfterChapter } from './modes.js';
 import { applyFailurePolicy, getSnackTargetCount } from '../events/eventRules.js';
+import { targetById } from '../interaction/targets';
 
 export type Difficulty = 'simple' | 'normal' | 'hard' | 'terror';
 export type Room = 'classroom' | 'corridor' | 'office';
@@ -419,7 +420,8 @@ export function getActions(state: GameState): GameAction[] {
   if (state.phase === 'ending') return [];
   if (state.phase === 'between') return [{ id: 'next', label: '进入下一天并恢复协作次数' }];
   const view: GameAction = { id: 'switch-view', label: state.view === 'map' ? '切换第一人称' : '切换地图视角', disabled: state.switchRemaining > 0 };
-  // escape/caught are physical renderer callbacks, not buttons that teleport out of a chase.
+  // Escape/caught and physical door submissions are renderer callbacks during
+  // a chase; the state-machine action list must not become a teleport menu.
   if (state.phase === 'chase') return [view];
   return [
     ...state.events.map((id) => ({ id: `event:${id}`, label: `查看目标：${EVENT_DETAILS[id as EventId].label}`, disabled: id === state.currentEvent })),
@@ -427,6 +429,27 @@ export function getActions(state: GameState): GameAction[] {
     view,
     ...(state.results[state.currentEvent] === 'pending' ? eventChoices(state) : [{ id: 'next', label: '查看下一项未处理的目标' }]),
   ];
+}
+
+/**
+ * The scene is the only public entry point for interaction actions. This keeps
+ * the existing event rules in one state machine while rejecting stale or
+ * remote UI commands that do not belong to the locked object.
+ */
+export function actInteraction(state: GameState, targetId: string, action: string, rng: () => number = Math.random): ActionResult {
+  const target = targetById(targetId);
+  if (!target || target.room !== state.room) return unchanged('这个场景目标已经不在当前房间。');
+  if (!target.actionIds.includes(action)) return unchanged('这个目标没有对应的操作。');
+  if (state.phase === 'chase' && !action.startsWith('go:') && action !== 'escape') return unchanged('追逐中只能寻找出口。');
+  // A door is the one chase action that is intentionally unavailable from the
+  // generic action list. It is committed only after the renderer has locked
+  // that physical door and loaded the destination scene.
+  if (state.phase === 'chase' && action.startsWith('go:') && target.targetRoom === action.slice(3)) {
+    state.room = target.targetRoom;
+    state.position = { x: 0, z: 0 };
+    return report(state, `你走进了${ROOM_LABELS[state.room]}。坐标以当前房间地面为准。`);
+  }
+  return act(state, action, rng);
 }
 
 export function act(state: GameState, action: string, rng: () => number = Math.random): ActionResult {

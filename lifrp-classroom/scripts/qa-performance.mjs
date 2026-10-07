@@ -4,7 +4,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 const baseUrl = process.env.QA_URL || 'http://127.0.0.1:5173/';
 const output = process.env.QA_OUTPUT || '/tmp/lifrp-qa-v2';
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: false, args: ['--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox'], env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' } });
+const browser = await chromium.launch({ headless: process.env.QA_HEADLESS === '1' || !process.env.DISPLAY, args: ['--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox'], env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' } });
 const reports = [];
 try {
   const scenarios = [

@@ -1,10 +1,14 @@
-import { createGame, act, tick, advance, getActions, getObjectives, EVENT_DETAILS, type GameAction, type GameState } from './simulation/game';
+import { createGame, act, actInteraction, tick, advance, getActions, getObjectives, EVENT_DETAILS, type GameAction, type GameState } from './simulation/game';
 import { generateBackSeatCandidates, generateFrontSeatSelection, adjustFrontSeat } from './simulation/seats.js';
 import { pickDifficulty, DIFFICULTY_CONFIG } from './simulation/difficulty.js';
 import { getStatusTier, OUTCOME_LABELS } from './simulation/outcomes.js';
 import type { WorldRenderer, Room, InteractionPrompt } from './render/WorldRenderer';
 import type { Quality } from './render/qualityProfiles';
 import { AudioSystem } from './audio/AudioSystem';
+import { InteractionController } from './interaction/InteractionController';
+import { InputRouter } from './input/InputRouter';
+import { InteractionUI, type ContextAction, type EvidenceEntry } from './ui/InteractionUI';
+import { targetById, targetsForRoom, type InteractionTarget } from './interaction/targets';
 import './ui/styles.css';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -27,6 +31,11 @@ let notice = '';
 let storedNotice = '';
 let playerName = '';
 let activePrompt: InteractionPrompt | null = null;
+let interactionController: InteractionController | null = null;
+let interactionUI: InteractionUI | null = null;
+let inputRouter: InputRouter | null = null;
+let gamePaused = false;
+let roomTransitioning = false;
 try {
   highestChapter = Math.max(1, Math.min(6, Number(localStorage.getItem(`${SAVE}progress`)) || 1));
   const settings = JSON.parse(localStorage.getItem(`${SAVE}settings`) || '{}');
@@ -81,6 +90,9 @@ function settingsSave() {
 function showMenu() {
   save();
   gameGeneration++;
+  inputRouter?.disable(); inputRouter = null;
+  interactionController = null; interactionUI = null; activePrompt = null; roomTransitioning = false;
+  gamePaused = false;
   world?.dispose(); world = null;
   audio.pause();
   screen = 'menu';
@@ -229,28 +241,47 @@ async function enterPlay() {
       button('交互', () => world?.interact(), 'touch-interact', 'interact'),
     ]),
   ]));
+  interactionUI = new InteractionUI(interactionHub, action => { interactionController?.operate(action); }, (open, pausesWorld) => {
+    world?.setInputLocked(open);
+    gamePaused = open && pausesWorld;
+    if (!open) interactionController?.resetSubmitted();
+  });
+  interactionController = new InteractionController({
+    targets: () => game ? targetsForRoom(game.room) : [],
+    isActionAvailable: (action, target) => Boolean(game && ((target.kind === 'door' && action === `go:${target.targetRoom}`) || getActions(game).some(item => item.id === action && !item.disabled))),
+    submit: (action, target) => beginContextAction(action, target),
+    onChange: () => renderInteractionHub(),
+  });
+  inputRouter?.disable();
+  inputRouter = new InputRouter(window);
+  inputRouter.onInteract = () => { if (!document.querySelector('dialog[open]')) world?.interact(); };
+  inputRouter.onCancel = () => { interactionUI?.close(); interactionController?.cancel(); };
+  inputRouter.onView = switchView;
+  inputRouter.onPanel = () => { panelOpen = !panelOpen; panel.hidden = !panelOpen; updateHud(); };
+  inputRouter.enable();
   renderEvent(); updateHud(); save();
   try {
     const { WorldRenderer } = await import('./render/WorldRenderer');
     if (generation !== gameGeneration || screen !== 'play') return;
     world = new WorldRenderer(canvas, quality);
     world.onStatus = text => { const node = document.querySelector('#scene-status'); if (node) { node.textContent = text; (node as HTMLElement).hidden = !text; } };
-    world.onRoom = room => {
-      if (!game || !world) return;
-      if (game.phase === 'chase') {
-        game.room = room;
-        game.position = world.spawn(room);
-        void world.load(room).then(() => world?.resize());
-        doAction('escape');
-      } else doAction(`go:${room}`);
-    };
+    world.onRoom = (room, targetId) => { void transitionRoom(room, targetId); };
     world.onView = switchView;
-    world.onInteractionPrompt = prompt => { activePrompt = prompt; renderInteractionHub(); };
+    world.onInteractionPrompt = prompt => {
+      activePrompt = prompt;
+      if (prompt) interactionController?.lock(prompt.targetId, prompt.distance);
+      else interactionController?.clear();
+      renderInteractionHub();
+    };
     world.onInteract = prompt => {
       activePrompt = prompt || activePrompt;
       const contextual = activePrompt ? getContextualActions(activePrompt) : [];
+      if (activePrompt && !interactionController?.snapshot.canOperate) {
+        say(`再靠近${activePrompt.label}一些。`, 'warning');
+        return;
+      }
       const next = contextual.find(action => !action.disabled);
-      if (next) { doAction(next.id); return; }
+      if (next) { interactionController?.operate(next.id); return; }
       panelOpen = true;
       panel.hidden = false;
       renderInteractionHub();
@@ -261,7 +292,7 @@ async function enterPlay() {
     world.onTick = dt => {
       if (!game || screen !== 'play') return;
       const before = game.phase;
-      tick(game, dt);
+      if (!gamePaused) tick(game, dt);
       const second = Math.floor(game.elapsed);
       if (second !== lastStatusSecond) { updateHud(); refreshTimedEvent(); lastStatusSecond = second; }
       if (game.phase !== before) { say(game.history.at(-1) || '课堂状态发生变化。', game.phase === 'chase' ? 'danger' : 'quiet'); renderEvent(); save(); }
@@ -277,10 +308,79 @@ async function enterPlay() {
   }
 }
 
-function doAction(action: string) {
+async function transitionRoom(room: Room, targetId?: string) {
+  if (!game || !world || game.room === room || roomTransitioning) return;
+  roomTransitioning = true;
+  world.setInputLocked(true);
+  try {
+    const fromRoom = game.room;
+    const previousPosition = { ...game.position };
+    const loaded = await world.load(room);
+    if (!loaded || !game || screen !== 'play') {
+      if (game) game.position = previousPosition;
+      say(`无法进入${ROOM_NAMES[room]}，请稍后在门口重试。`, 'warning');
+      return;
+    }
+    const result = actInteraction(game, targetId || activePrompt?.targetId || `${fromRoom}:door`, `go:${room}`);
+    if (result.tone === 'warning' || result.message.includes('不属于') || game.room !== room) {
+      game.position = previousPosition;
+      await world.load(fromRoom);
+      say(game.phase === 'ending' ? '进入门口前，追逐已经结束。' : result.message, game.phase === 'ending' ? 'danger' : result.tone);
+      return;
+    }
+    game.position = world.spawn(room);
+    world.resize();
+    if (game.phase === 'chase') doAction('escape');
+    updateHud(); renderEvent(); save();
+  } finally {
+    world?.setInputLocked(false);
+    roomTransitioning = false;
+  }
+}
+
+function actionPreview(action: string, target: InteractionTarget) {
+  const title = target.label;
+  const objectBody: Record<string, string[]> = {
+    'inspect:q2': ['作业本摊在桌面上。第二题旁有一行红笔批注：先把碳和两个氧的相对原子质量相加。', '你可以记下批注，再回到探索。'],
+    'inspect:q5': ['末页第五题被红笔圈出。旁边的箭头提示你核对方程式两边的原子数量。', '你可以记下批注，再回到探索。'],
+    'evidence:work': ['草稿保留了先列守恒式、再代入数据和单位验算的顺序。', '这是一条来自自己桌面的记录。'],
+    'evidence:experiment': ['实验记录比较了粉末与块状碳酸钙的接触面积、反应速度和最终产气量。', '记录可以重复阅读，但只会计入一次证据。'],
+    'evidence:blackboard': ['黑板写着质量、酸量和温度需要保持一致。', '不要把观察到的速度差直接当成最终产量差。'],
+    'evidence:classroom': ['课表和便条的时间安排互相矛盾，体育课没有被批准占用。', '这条记录来自教室。'],
+    'evidence:office': ['审批记录的签名栏为空，申请没有获得批准。', '这条记录来自办公室。'],
+    'evidence:order': ['订单写着“受着”，付款便条夹在订单和收据之间。', '先核对记录，再判断对方的真实意图。'],
+  };
+  return objectBody[action] || [`${title}目前可以进行“${action}”操作。`, '确认后才会写入事件记录。'];
+}
+
+function beginContextAction(action: string, prompt: InteractionPrompt | InteractionTarget | null) {
+  if (!game || !prompt) return;
+  const targetId = 'targetId' in prompt ? prompt.targetId : prompt.id;
+  const target = targetById(targetId);
+  if (!target || !interactionController?.snapshot.target || interactionController.snapshot.target.id !== target.id || !interactionController.snapshot.canOperate) {
+    say('请先锁定并靠近场景目标。', 'warning');
+    return;
+  }
+  const available = getActions(game).find(item => item.id === action);
+  const physicalDoor = action.startsWith('go:') && target.kind === 'door' && target.targetRoom === action.slice(3);
+  if (!target.actionIds.includes(action) || ((!available || available.disabled) && !physicalDoor)) {
+    say(available?.label || '当前目标暂时不能执行这个操作。', 'warning');
+    return;
+  }
+  if (action.startsWith('go:')) { void transitionRoom(target.targetRoom || action.slice(3) as Room, target.id); return; }
+  if (!available) return;
+  const confirm = () => { doAction(action, target.id); interactionController?.release(action, target.id); };
+  if (action.startsWith('inspect:') || action.startsWith('evidence:') || action.startsWith('solve:') || action === 'submit' || action === 'track' || action === 'study' || action === 'rest' || action.startsWith('schedule:') || action === 'holiday:next-day') {
+    interactionUI?.openObjectView(target.label, actionPreview(action, target), { label: available.label, disabled: available.disabled, onConfirm: confirm });
+  } else if (action === 'listen' || action === 'distract' || action.startsWith('judge:') || action === 'divert' || action.startsWith('intervene:') || action.startsWith('speak:')) {
+    interactionUI?.openDialogue(target.label, [target.hint, '先回想已经掌握的证据，再决定如何回应。'], { label: available.label, disabled: available.disabled, onConfirm: confirm });
+  } else confirm();
+}
+
+function doAction(action: string, targetId?: string) {
   if (!game) return;
   const oldRoom = game.room;
-  const result = act(game, action);
+  const result = targetId ? actInteraction(game, targetId, action) : act(game, action);
   say(result.message, result.tone);
   if (game.room !== oldRoom && world) {
     game.position = world.spawn(game.room);
@@ -318,41 +418,33 @@ function updateHud() {
 }
 function contextualActionPool(): GameAction[] {
   if (!game) return [];
-  return getActions(game).filter(action => !action.id.startsWith('event:') && !action.id.startsWith('go:') && action.id !== 'switch-view');
+  return getActions(game).filter(action => !action.id.startsWith('event:') && action.id !== 'switch-view');
 }
 function getContextualActions(prompt: InteractionPrompt): GameAction[] {
   const actions = contextualActionPool();
   if (!prompt.actionIds.length) return [];
-  return prompt.actionIds.map(id => actions.find(action => action.id === id)).filter((action): action is GameAction => Boolean(action));
+  // A context card only offers actions that can be submitted now. Disabled
+  // state-machine choices remain in the event rules, but do not crowd the
+  // small object card or look like remote task-list commands.
+  return prompt.actionIds.map(id => actions.find(action => action.id === id) || (prompt.kind === 'portal' && id.startsWith('go:') ? { id, label: `通过${ROOM_NAMES[id.slice(3) as Room]}出口` } : undefined))
+    .filter((action): action is GameAction => action !== undefined && !action.disabled);
 }
 function renderInteractionHub() {
-  const hub = document.querySelector<HTMLElement>('#interaction-hub');
-  if (!hub || !game) return;
-  if (game.phase === 'ending') { hub.hidden = true; return; }
-  hub.hidden = false;
-  const actions = activePrompt ? getContextualActions(activePrompt) : [];
-  const routes = getActions(game).filter(action => action.id.startsWith('go:') && !action.disabled);
-  const title = activePrompt ? activePrompt.label : '场景交互';
-  const hint = activePrompt ? activePrompt.hint : '靠近场景标记后按 E；也可以点击此处选择当前目标的行动。';
-  hub.replaceChildren(
-    element('div', { class: 'interaction-kicker', text: activePrompt ? '附近目标 / NEARBY' : '交互系统 / CONTEXT' }),
-    element('div', { class: 'interaction-title', text: title }),
-    element('p', { class: 'interaction-hint', text: hint }),
-    actions.length ? element('div', { class: 'interaction-actions' }, actions.slice(0, 4).map(action => {
-      const node = button(action.label, () => doAction(action.id), `interaction-action ${action.disabled ? 'is-disabled' : ''}`, action.id);
-      node.disabled = Boolean(action.disabled);
-      return node;
-    })) : element('p', { class: 'interaction-empty', text: activePrompt ? '当前目标暂时没有可执行行动；先完成事件面板中的前置目标。' : '移动到金色场景标记附近开始调查。' }),
-    routes.length ? element('div', { class: 'interaction-routes' }, [element('span', { text: '前往' }), ...routes.map(action => button(action.label, () => doAction(action.id), 'route-action', action.id))]) : element('span'),
-  );
+  if (!game || !interactionUI) return;
+  if (game.phase === 'ending') { interactionUI.renderContext(null, []); return; }
+  const canOperate = interactionController?.snapshot.canOperate ?? false;
+  const actions = activePrompt ? getContextualActions(activePrompt).map(action => ({ ...action, disabled: Boolean(action.disabled || !canOperate) })) : [];
+  interactionUI.renderContext(activePrompt, actions as ContextAction[]);
 }
 function renderEvent() {
   if (!game || screen !== 'play') return;
   const g = game;
   const rail = document.querySelector('#event-rail');
   rail?.replaceChildren(...g.events.map((id, index) => {
-    const item = button(`${String(index + 1).padStart(2, '0')} · ${details(id)?.label || id}`, () => doAction(`event:${id}`), `event-chip ${g.currentEvent === id ? 'active' : ''} ${g.results[id]}`);
-    item.disabled = g.phase !== 'playing';
+    const item = element('div', { class: `event-chip ${g.currentEvent === id ? 'active' : ''} ${g.results[id]}`, role: 'status' }, [
+      element('span', { class: 'event-chip-index', text: String(index + 1).padStart(2, '0') }),
+      element('span', { text: details(id)?.label || id }),
+    ]);
     return item;
   }));
   const panel = document.querySelector<HTMLElement>('#event-drawer');
@@ -368,6 +460,11 @@ function renderEvent() {
     panel.replaceChildren(element('div', { class: 'section-kicker', text: '课表已结算' }), element('h3', { text: `第 ${g.chapter} 章结束` }),
       element('p', { text: '记录已保存。下一天会恢复职务协作次数，难度与座位保持不变。' }),
       button('继续下一章', () => { advance(g); updateHud(); renderEvent(); save(); if (world) { g.position = { x: 0, z: -1.55 + (g.seat.row - 1 + (g.seat.row > 3 ? 1 : 0)) * .8 + .45 }; void world.load(g.room); world.start(g); } }, 'primary-button', 'advance'));
+  } else if (g.results[g.currentEvent] !== 'pending') {
+    panel.replaceChildren(element('div', { class: 'section-kicker', text: '目标已记录 / RECORDED' }),
+      element('h3', { text: `${details(g.currentEvent)?.label || g.currentEvent}已${g.results[g.currentEvent] === 'success' ? '完成' : '结束'}` }),
+      element('p', { text: '行动结果已经写入事件状态。回到场景后，进入下一项待处理目标。' }),
+      button('进入下一项', () => { doAction('next'); }, 'primary-button', 'next'));
   } else {
     const objectives = getObjectives(g);
     panel.replaceChildren(element('div', { class: 'drawer-rule' }),
@@ -426,8 +523,26 @@ function openSettings() {
 }
 function openJournal() {
   if (!game) return;
-  dialog('课堂记录', [element('ol', { class: 'journal' }, game.history.slice(-40).map(text => element('li', { text }))),
-    element('p', { text: '操作：WASD / 左侧摇杆移动，拖动画面转向，E / 交互按钮调查。俯视点击地面移动，走近金色门标记后交互。' })]);
+  const evidence: EvidenceEntry[] = [];
+  const evidenceText: Record<string, [string, string]> = {
+    blackboard: ['黑板与讲台', '板书记录了质量、酸量和温度的控制条件。'],
+    experiment: ['实验记录', '粉末与块状碳酸钙的接触面积不同，反应速度不同，但等质量的最终产气量相同。'],
+    textbook: ['课本与教学进度', '课本页码和当天进度没有出现老师口中的新知识点。'],
+    work: ['自己的草稿', '草稿保留了先列守恒式、再代入数据和单位验算的顺序。'],
+    witness: ['同学证词', '同学说明你先独立列式，再和旁边同学核对结果。'],
+    order: ['办公室订单', '订单与付款便条夹在一起，记录了奶茶的交付意图。'],
+    classroom: ['班级课表', '体育课表与求雨便条的时间安排互相矛盾。'],
+    office: ['审批记录', '办公室审批记录的签名栏为空，申请没有获得批准。'],
+  };
+  for (const [eventId, data] of Object.entries(game.data)) {
+    const found = 'evidence' in data ? data.evidence : [];
+    for (const id of found) {
+      const text = evidenceText[id];
+      if (text) evidence.push({ event: EVENT_DETAILS[eventId as keyof typeof EVENT_DETAILS]?.label || eventId, source: text[0], text: text[1] });
+    }
+  }
+  if (interactionUI) interactionUI.openEvidence(evidence);
+  else dialog('证据记录', [element('ol', { class: 'journal' }, game.history.slice(-40).map(text => element('li', { text }))) ]);
 }
 function openHelp() {
   dialog('操作指南', [
@@ -447,17 +562,9 @@ async function fullScreen() {
 }
 window.addEventListener('pagehide', () => { save(); world?.stop(); audio.pause(); });
 window.addEventListener('pageshow', () => { if (game && screen === 'play') world?.start(game); });
-window.addEventListener('keydown', event => {
-  if (screen !== 'play' || event.repeat || (event.target as HTMLElement).closest('input,select,textarea,dialog')) return;
-  if (event.code === 'KeyI') {
-    panelOpen = !panelOpen;
-    const panel = document.querySelector<HTMLElement>('#event-drawer');
-    if (panel) panel.hidden = !panelOpen;
-    updateHud();
-  }
-});
 Object.defineProperty(window, '__lifrp', { value: {
   metrics: () => world?.metrics() || { loaded: false, webgl: null },
+  targetScreen: (id: string) => world?.targetScreen(id) || null,
   snapshot: () => game ? JSON.parse(JSON.stringify(game)) : null,
   resetMetrics: () => world?.monitor.reset(),
 }, configurable: false });

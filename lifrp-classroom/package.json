@@ -7,14 +7,14 @@
     "dev": "node node_modules/vite/bin/vite.js",
     "build": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/vite/bin/vite.js build",
     "preview": "node node_modules/vite/bin/vite.js preview",
-    "test": "node --test src/simulation/*.test.mjs && node node_modules/vitest/vitest.mjs run src/render/rendering.test.ts src/simulation/game.test.ts",
-    "test:watch": "node node_modules/vitest/vitest.mjs src/render/rendering.test.ts src/simulation/game.test.ts",
+    "test": "node --test src/simulation/*.test.mjs && node node_modules/vitest/vitest.mjs run src/render/rendering.test.ts src/simulation/game.test.ts src/interaction/interaction.test.ts",
+    "test:watch": "node node_modules/vitest/vitest.mjs src/render/rendering.test.ts src/simulation/game.test.ts src/interaction/interaction.test.ts",
     "assets:refine": "blender --background --factory-startup --python scripts/refine-models.py",
     "assets:optimize": "node scripts/optimize-assets.mjs",
-    "qa:performance": "xvfb-run -a node scripts/qa-performance.mjs",
+    "qa:performance": "node scripts/qa-performance.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "assets:validate": "node scripts/validate-assets.mjs",
-    "qa:production": "xvfb-run -a node scripts/qa-production.mjs"
+    "qa:production": "node scripts/qa-production.mjs"
   },
   "dependencies": {
     "three": "0.180.0"

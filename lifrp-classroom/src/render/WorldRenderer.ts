@@ -3,7 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { createWebGLContext, getQualityProfile, pixelRatio, type Quality } from './qualityProfiles';
 import { PerformanceMonitor } from './performanceMonitor';
-import { moveWithinRoom, type CollisionRoom } from '../world/collision';
+import { hasLineOfSight, moveWithinRoom, type CollisionRoom } from '../world/collision';
+import { findPath } from '../world/navigation';
+import { targetById, targetsForRoom } from '../interaction/targets';
 import { animateCharacter, createCharacter } from './characters';
 
 export type Room = 'classroom' | 'corridor' | 'office';
@@ -13,22 +15,14 @@ export interface WorldState {
   chase: { remaining: number; distance: number; goalRoom: Room } | null;
 }
 export interface InteractionPrompt {
+  targetId: string;
   id: string;
   label: string;
   hint: string;
   actionIds: string[];
   distance: number;
-  kind: 'hotspot' | 'portal';
+  kind: 'object' | 'person' | 'door' | 'portal';
   targetRoom?: Room;
-}
-interface HotspotDefinition {
-  id: string;
-  room: Room;
-  x: number;
-  z: number;
-  label: string;
-  hint: string;
-  actionIds: string[];
 }
 const SPAWN: Record<Room, [number, number]> = { classroom: [0, 2.9], corridor: [-8.8, 0], office: [0, -3.2] };
 const PORTALS: Record<Room, { target: Room; x: number; z: number; label: string }[]> = {
@@ -36,12 +30,6 @@ const PORTALS: Record<Room, { target: Room; x: number; z: number; label: string 
   corridor: [{ target: 'classroom', x: -9.5, z: -.9, label: '教室' }, { target: 'office', x: 9.5, z: -.9, label: '办公室' }],
   office: [{ target: 'corridor', x: 0, z: 3.1, label: '走廊' }],
 };
-const HOTSPOTS: HotspotDefinition[] = [
-  { id: 'classroom-board', room: 'classroom', x: 0, z: -3.18, label: '黑板与讲台', hint: '查看板书、作业批注和课堂记录', actionIds: ['inspect:q2', 'inspect:q5', 'evidence:blackboard', 'evidence:classroom', 'evidence:work', 'evidence:experiment'] },
-  { id: 'classroom-desks', room: 'classroom', x: 0, z: .55, label: '课桌与作业本', hint: '整理桌面上的草稿与实验记录', actionIds: ['evidence:work', 'evidence:experiment', 'inspect:q2', 'inspect:q5'] },
-  { id: 'corridor-student', room: 'corridor', x: 0, z: 0, label: '走廊同学', hint: '询问同学，核对语气和独立作答过程', actionIds: ['evidence:witness', 'listen'] },
-  { id: 'office-records', room: 'office', x: 0, z: -3.05, label: '办公室资料桌', hint: '查看审批记录、订单与付款便条', actionIds: ['evidence:office', 'evidence:order'] },
-];
 
 export class WorldRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -74,12 +62,14 @@ export class WorldRenderer {
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private target = new THREE.Vector3();
-  private destination: THREE.Vector3 | null = null;
+  private destination: { x: number; z: number } | null = null;
+  private destinationPath: { x: number; z: number }[] = [];
   private yaw = 0;
   private pitch = 0;
   private last = 0;
   private raf = 0;
   private running = false;
+  private inputLocked = false;
   private loadGeneration = 0;
   private loaded = false;
   private lost = false;
@@ -96,7 +86,7 @@ export class WorldRenderer {
   private state: WorldState | null = null;
   private resizeObserver: ResizeObserver;
   onTick: (dt: number) => void = () => {};
-  onRoom: (room: Room) => void = () => {};
+  onRoom: (room: Room, targetId?: string) => void = () => {};
   onInteract: (prompt?: InteractionPrompt | null) => void = () => {};
   onInteractionPrompt: (prompt: InteractionPrompt | null) => void = () => {};
   onCaught: () => void = () => {};
@@ -157,10 +147,10 @@ export class WorldRenderer {
     this.officeTeacher.userData.baseY = 0;
   }
 
-  async load(room: Room): Promise<void> {
+  async load(room: Room): Promise<boolean> {
     this.requestedRoom = room;
     this.portalRequested = false;
-    if (room === this.room && this.loaded) return;
+    if (room === this.room && this.loaded) return true;
     const generation = ++this.loadGeneration;
     this.loaded = false;
     this.onStatus('正在载入场景…');
@@ -174,7 +164,7 @@ export class WorldRenderer {
       const baseline = import.meta.env.DEV && new URLSearchParams(location.search).has('assetBaseline');
       const url = `${import.meta.env.BASE_URL}assets/models/${baseline ? 'source' : this.profile.assetTier}/${room}.glb`;
       const gltf = await this.loader.loadAsync(url);
-      if (this.disposed || generation !== this.loadGeneration) { this.disposeObjects(gltf.scene); return; }
+      if (this.disposed || generation !== this.loadGeneration) { this.disposeObjects(gltf.scene); return false; }
       if (this.model) { this.scene.remove(this.model); this.disposeObjects(this.model); }
       this.model = gltf.scene;
       this.room = room;
@@ -197,7 +187,13 @@ export class WorldRenderer {
         const ring = new THREE.Mesh(new THREE.TorusGeometry(.32, .04, 6, 18), new THREE.MeshBasicMaterial({ color: 0xd3a968 }));
         ring.position.set(portal.x, 1.1, portal.z);
         ring.userData.targetRoom = portal.target;
-        this.portals.add(ring);
+        // The visible torus has a hole, so a click at its projected centre can
+        // miss the raycast. Keep a low-opacity disk at the same location as a
+        // generous, stable hit proxy for map clicks and touch input.
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(.36, .36, .04, 16), new THREE.MeshBasicMaterial({ color: 0xd3a968, transparent: true, opacity: .08, depthWrite: false }));
+        hit.position.copy(ring.position);
+        hit.userData.targetRoom = portal.target;
+        this.portals.add(ring, hit);
       }
       this.disposeObjects(this.interactables);
       this.interactables.clear();
@@ -209,6 +205,7 @@ export class WorldRenderer {
       this.activePromptKey = '';
       this.onInteractionPrompt(null);
       this.destination = null;
+      this.destinationPath = [];
       this.yaw = room === 'corridor' ? -Math.PI / 2 : room === 'office' ? Math.PI : 0;
       this.pitch = 0;
       this.loaded = true;
@@ -218,21 +215,25 @@ export class WorldRenderer {
       this.renderer.shadowMap.needsUpdate = true;
       this.monitor.reset();
       this.onStatus('');
+      return true;
     } catch (error) {
+      this.loaded = Boolean(this.model && this.room);
+      this.requestedRoom = this.room;
       this.onStatus(`场景加载失败：${error instanceof Error ? error.message : String(error)}。可在设置里重试。`);
+      return false;
     }
   }
 
   private createHotspots(room: Room) {
-    const defs = HOTSPOTS.filter((hotspot) => hotspot.room === room);
+    const defs = targetsForRoom(room);
     for (const hotspot of defs) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(.27, .035, 6, 18), new THREE.MeshBasicMaterial({ color: 0xb9d8c2, transparent: true, opacity: .92 }));
       ring.position.set(hotspot.x, .06, hotspot.z);
       ring.rotation.x = -Math.PI / 2;
-      ring.userData.hotspotId = hotspot.id;
+      ring.userData.targetId = hotspot.id;
       const beacon = new THREE.Mesh(new THREE.CylinderGeometry(.012, .045, .65, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xb9d8c2, transparent: true, opacity: .2, depthWrite: false }));
       beacon.position.set(hotspot.x, .38, hotspot.z);
-      beacon.userData.hotspotId = hotspot.id;
+      beacon.userData.targetId = hotspot.id;
       this.interactables.add(ring, beacon);
     }
   }
@@ -261,28 +262,49 @@ export class WorldRenderer {
 
   private interactionAt(state: WorldState): InteractionPrompt | null {
     const portal = PORTALS[state.room].find((candidate) => Math.hypot(candidate.x - state.position.x, candidate.z - state.position.z) < 1.25);
-    if (portal) return {
-      id: `portal:${portal.target}`,
+    if (portal) {
+      const target = targetsForRoom(state.room).find(item => item.kind === 'door' && item.targetRoom === portal.target && Math.abs(item.x - portal.x) < .1);
+      return {
+      targetId: target?.id || `portal:${portal.target}`,
+      id: target?.id || `portal:${portal.target}`,
       label: `进入${portal.label}`,
       hint: '抵达门口后按 E 进入相邻房间',
-      actionIds: [],
+      actionIds: target?.actionIds || [`go:${portal.target}`],
       distance: Math.hypot(portal.x - state.position.x, portal.z - state.position.z),
       kind: 'portal',
       targetRoom: portal.target,
-    };
-    const hotspot = HOTSPOTS.filter((item) => item.room === state.room)
+      };
+    }
+    const hotspot = targetsForRoom(state.room)
+      .filter(item => item.kind !== 'door')
       .map((item) => ({ item, distance: Math.hypot(item.x - state.position.x, item.z - state.position.z) }))
-      .filter(({ distance }) => distance < 1.55)
+      .filter(({ item, distance }) => distance < item.observeRange)
+      .filter(({ item }) => item.id === 'classroom:desk' || !this.collision || hasLineOfSight(state.position, { x: item.x, z: item.z }, this.collision[state.room]))
+      .filter(({ item, distance }) => {
+        if (state.view !== 'first-person' || distance < .15) return true;
+        const dx = item.x - state.position.x;
+        const dz = item.z - state.position.z;
+        const length = Math.hypot(dx, dz);
+        const forward = { x: -Math.sin(this.yaw), z: -Math.cos(this.yaw) };
+        return (dx * forward.x + dz * forward.z) / length > .15;
+      })
       .sort((a, b) => a.distance - b.distance)[0];
     if (!hotspot) return null;
-    return { id: hotspot.item.id, label: hotspot.item.label, hint: hotspot.item.hint, actionIds: hotspot.item.actionIds, distance: hotspot.distance, kind: 'hotspot' };
+    return { targetId: hotspot.item.id, id: hotspot.item.id, label: hotspot.item.label, hint: hotspot.distance <= hotspot.item.range ? hotspot.item.hint : `再靠近一些 · ${hotspot.item.hint}`, actionIds: hotspot.item.actionIds, distance: hotspot.distance, kind: hotspot.item.kind };
   }
 
   private updateInteractionPrompt(state: WorldState) {
-    if (!['playing', 'chase'].includes(state.phase) || state.switchRemaining > 0) return;
+    if (!['playing', 'chase'].includes(state.phase) || state.switchRemaining > 0) {
+      if (this.activePromptKey) { this.activePromptKey = ''; this.activePrompt = null; this.onInteractionPrompt(null); }
+      return;
+    }
     const prompt = this.interactionAt(state);
-    const key = prompt ? `${prompt.kind}:${prompt.id}` : '';
-    if (key === this.activePromptKey) return;
+    const key = prompt ? `${prompt.kind}:${prompt.targetId}` : '';
+    if (key === this.activePromptKey) {
+      this.activePrompt = prompt;
+      this.onInteractionPrompt(prompt);
+      return;
+    }
     this.activePromptKey = key;
     this.activePrompt = prompt;
     this.onInteractionPrompt(prompt);
@@ -295,6 +317,13 @@ export class WorldRenderer {
   }
 
   spawn(room: Room): { x: number; z: number } { return { x: SPAWN[room][0], z: SPAWN[room][1] }; }
+  /** Read-only screen coordinate used by production QA and accessibility tools. */
+  targetScreen(id: string): { x: number; y: number } | null {
+    const target = targetById(id);
+    if (!target || !this.state || this.state.view !== 'map') return null;
+    const projected = new THREE.Vector3(target.x, target.kind === 'door' ? 1.1 : .06, target.z).project(this.map);
+    return { x: (projected.x + 1) * .5 * this.canvas.clientWidth, y: (1 - projected.y) * .5 * this.canvas.clientHeight };
+  }
   async setQuality(quality: Quality, automatic = false) {
     const before = this.profile.assetTier;
     if (!automatic) this.quality = quality;
@@ -302,7 +331,16 @@ export class WorldRenderer {
     this.renderer.shadowMap.enabled = this.profile.shadows;
     this.moon.castShadow = this.profile.shadows;
     this.resize();
-    if (this.requestedRoom && before !== this.profile.assetTier) { const room = this.requestedRoom; this.loaded = false; await this.load(room); }
+    if (this.requestedRoom && before !== this.profile.assetTier) {
+      const room = this.requestedRoom;
+      // A quality reload replaces the scene graph but should not cancel a map
+      // click that is already approaching an object. Rebuild the path from the
+      // current logical position after the new asset tier is ready.
+      const destinationGoal = this.destinationPath.at(-1) || this.destination;
+      this.loaded = false;
+      await this.load(room);
+      if (destinationGoal && this.state?.room === room && this.loaded) this.setDestination(destinationGoal, this.state);
+    }
     this.renderer.shadowMap.needsUpdate = true;
   }
   start(state: WorldState): void {
@@ -317,6 +355,10 @@ export class WorldRenderer {
     cancelAnimationFrame(this.raf);
     this.keys.clear();
     this.input.x = this.input.z = 0;
+  }
+  setInputLocked(locked: boolean) {
+    this.inputLocked = locked;
+    this.keys.clear(); this.input.x = this.input.z = 0; this.drag = null;
   }
   private frame = (now: number) => {
     if (!this.running || this.disposed || !this.state) return;
@@ -369,15 +411,22 @@ export class WorldRenderer {
   };
 
   private move(dt: number, state: WorldState) {
-    if (state.switchRemaining > 0 || !['playing', 'chase'].includes(state.phase) || !this.collision) return;
+    if (this.inputLocked || state.switchRemaining > 0 || !['playing', 'chase'].includes(state.phase) || !this.collision) return;
     let strafe = this.input.x + Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft'));
     let forward = -this.input.z + Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown'));
     let dx = 0, dz = 0;
     if (state.view === 'map' && this.destination && !strafe && !forward) {
       dx = this.destination.x - state.position.x; dz = this.destination.z - state.position.z;
       const len = Math.hypot(dx, dz);
-      if (len < .12) { this.destination = null; return; }
-      dx /= len; dz /= len;
+      if (len < .12) {
+        this.destinationPath.shift();
+        this.destination = this.destinationPath[0] || null;
+        if (!this.destination) return;
+        dx = this.destination.x - state.position.x;
+        dz = this.destination.z - state.position.z;
+      }
+      const currentLength = Math.hypot(dx, dz);
+      if (currentLength > 0) { dx /= currentLength; dz /= currentLength; }
     } else {
       const len = Math.hypot(strafe, forward);
       if (len > 1) { strafe /= len; forward /= len; }
@@ -389,6 +438,19 @@ export class WorldRenderer {
     state.position.x = moved.x; state.position.z = moved.z;
     this.perspective.position.set(moved.x, 1.6, moved.z);
     this.perspective.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+  private setDestination(point: { x: number; z: number }, state: WorldState) {
+    const room = this.collision?.[state.room];
+    const path = room ? findPath(state.position, point, room) : [point];
+    if (!path) {
+      this.destination = null;
+      this.destinationPath = [];
+      this.onStatus('这条路线被桌椅挡住了，请换一个落脚点。');
+      return false;
+    }
+    this.destinationPath = path;
+    this.destination = path[0] || null;
+    return true;
   }
   private updateView(state: WorldState) {
     this.player.visible = state.view === 'map';
@@ -407,18 +469,15 @@ export class WorldRenderer {
     const prompt = this.interactionAt(this.state);
     if (prompt?.kind === 'portal' && prompt.targetRoom && !this.portalRequested) {
       this.portalRequested = true;
-      this.onRoom(prompt.targetRoom);
+      this.onRoom(prompt.targetRoom, prompt.targetId);
     } else this.onInteract(prompt);
   }
   private bindInput() {
     const signal = this.abort.signal;
     window.addEventListener('keydown', e => {
-      if (!this.running || (e.target as HTMLElement).closest('input,select,textarea,dialog')) return;
+      if (!this.running || this.inputLocked || (e.target instanceof HTMLElement && e.target.closest('input,select,textarea,dialog'))) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       this.keys.add(e.code);
-      if (e.repeat) return;
-      if (e.code === 'KeyE') this.interact();
-      if (e.code === 'KeyV') this.onView();
     }, { signal });
     window.addEventListener('keyup', e => this.keys.delete(e.code), { signal });
     window.addEventListener('blur', () => { this.keys.clear(); this.input.x = this.input.z = 0; }, { signal });
@@ -429,7 +488,8 @@ export class WorldRenderer {
     this.canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.lost = true; this.onStatus('图形上下文已丢失，等待恢复…'); }, { signal });
     this.canvas.addEventListener('webglcontextrestored', () => { this.lost = false; this.last = performance.now(); this.renderer.shadowMap.needsUpdate = true; this.onStatus(''); }, { signal });
     this.canvas.addEventListener('pointerdown', e => {
-      this.canvas.setPointerCapture(e.pointerId);
+      if (this.inputLocked) return;
+      try { this.canvas.setPointerCapture(e.pointerId); } catch { /* Synthetic accessibility/QA clicks have no active pointer capture. */ }
       this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
       if (this.state?.view === 'map') {
         const box = this.canvas.getBoundingClientRect();
@@ -437,19 +497,19 @@ export class WorldRenderer {
         this.ray.setFromCamera(this.cursor, this.map);
         const portal = this.ray.intersectObjects(this.portals.children)[0];
         if (portal?.object.userData.targetRoom) {
-          this.destination = portal.object.position.clone();
+          this.setDestination({ x: portal.object.position.x, z: portal.object.position.z }, this.state!);
           this.onStatus('走近门口后按 E 或「交互」进入。');
         } else {
           const hotspot = this.ray.intersectObjects(this.interactables.children)[0];
-          if (hotspot?.object.userData.hotspotId) {
-            this.destination = hotspot.object.position.clone();
+          if (hotspot?.object.userData.targetId) {
+            this.setDestination({ x: hotspot.object.position.x, z: hotspot.object.position.z }, this.state!);
             this.onStatus('正在前往场景目标，靠近后按 E 调查。');
-          } else if (this.ray.ray.intersectPlane(this.plane, this.target)) this.destination = this.target.clone();
+          } else if (this.ray.ray.intersectPlane(this.plane, this.target)) this.setDestination(this.target, this.state!);
         }
       }
     }, { signal });
     this.canvas.addEventListener('pointermove', e => {
-      if (this.drag?.id !== e.pointerId || this.state?.view !== 'first-person') return;
+      if (this.inputLocked || this.drag?.id !== e.pointerId || this.state?.view !== 'first-person') return;
       this.yaw -= (e.clientX - this.drag.x) * .004;
       this.pitch = Math.max(-1.15, Math.min(1.15, this.pitch - (e.clientY - this.drag.y) * .004));
       this.drag.x = e.clientX; this.drag.y = e.clientY;
