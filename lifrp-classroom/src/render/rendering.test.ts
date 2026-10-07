@@ -51,4 +51,16 @@ describe('shared walk collision', () => {
   it('keeps the player within room walls', () => {
     expect(moveWithinRoom({ x: 4.7, z: 0 }, 1, 0, room).x).toBeLessThanOrEqual(4.82);
   });
+  it('keeps office movement out of cubicle bays while preserving the front aisle', () => {
+    const office = {
+      bounds: [-4.4, 4.4, -3.6, 3.6] as [number, number, number, number],
+      obstacles: [
+        [-3.75, -1.65, -2.42, -.86], [-1.05, 1.05, -2.42, -.86], [1.65, 3.75, -2.42, -.86],
+        [-3.75, -1.65, -.42, 1.16], [-1.05, 1.05, -.42, 1.16], [1.65, 3.75, -.42, 1.16],
+        [-3.75, -1.65, 1.5, 3.12], [-1.05, 1.05, 1.5, 3.12], [1.65, 3.75, 1.5, 3.12],
+      ] as [number, number, number, number][],
+    };
+    expect(moveWithinRoom({ x: 0, z: -3.1 }, 0, .8, office).z).toBeLessThanOrEqual(-1.04);
+    expect(moveWithinRoom({ x: 0, z: -3.1 }, 2.8, 0, office).x).toBeCloseTo(2.8);
+  });
 });

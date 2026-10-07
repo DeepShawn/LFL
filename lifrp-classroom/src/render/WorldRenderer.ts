@@ -4,6 +4,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { createWebGLContext, getQualityProfile, pixelRatio, type Quality } from './qualityProfiles';
 import { PerformanceMonitor } from './performanceMonitor';
 import { moveWithinRoom, type CollisionRoom } from '../world/collision';
+import { animateCharacter, createCharacter } from './characters';
 
 export type Room = 'classroom' | 'corridor' | 'office';
 export interface WorldState {
@@ -11,12 +12,36 @@ export interface WorldState {
   phase: string; elapsed: number; switchRemaining: number;
   chase: { remaining: number; distance: number; goalRoom: Room } | null;
 }
-const SPAWN: Record<Room, [number, number]> = { classroom: [0, 2.9], corridor: [-8.8, 0], office: [0, 3.2] };
+export interface InteractionPrompt {
+  id: string;
+  label: string;
+  hint: string;
+  actionIds: string[];
+  distance: number;
+  kind: 'hotspot' | 'portal';
+  targetRoom?: Room;
+}
+interface HotspotDefinition {
+  id: string;
+  room: Room;
+  x: number;
+  z: number;
+  label: string;
+  hint: string;
+  actionIds: string[];
+}
+const SPAWN: Record<Room, [number, number]> = { classroom: [0, 2.9], corridor: [-8.8, 0], office: [0, -3.2] };
 const PORTALS: Record<Room, { target: Room; x: number; z: number; label: string }[]> = {
   classroom: [{ target: 'corridor', x: -4.45, z: -1, label: '走廊' }],
   corridor: [{ target: 'classroom', x: -9.5, z: -.9, label: '教室' }, { target: 'office', x: 9.5, z: -.9, label: '办公室' }],
   office: [{ target: 'corridor', x: 0, z: 3.1, label: '走廊' }],
 };
+const HOTSPOTS: HotspotDefinition[] = [
+  { id: 'classroom-board', room: 'classroom', x: 0, z: -3.18, label: '黑板与讲台', hint: '查看板书、作业批注和课堂记录', actionIds: ['inspect:q2', 'inspect:q5', 'evidence:blackboard', 'evidence:classroom', 'evidence:work', 'evidence:experiment'] },
+  { id: 'classroom-desks', room: 'classroom', x: 0, z: .55, label: '课桌与作业本', hint: '整理桌面上的草稿与实验记录', actionIds: ['evidence:work', 'evidence:experiment', 'inspect:q2', 'inspect:q5'] },
+  { id: 'corridor-student', room: 'corridor', x: 0, z: 0, label: '走廊同学', hint: '询问同学，核对语气和独立作答过程', actionIds: ['evidence:witness', 'listen'] },
+  { id: 'office-records', room: 'office', x: 0, z: -3.05, label: '办公室资料桌', hint: '查看审批记录、订单与付款便条', actionIds: ['evidence:office', 'evidence:order'] },
+];
 
 export class WorldRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -36,7 +61,11 @@ export class WorldRenderer {
   private cutaway: THREE.Object3D[] = [];
   private collision: Record<Room, CollisionRoom> | null = null;
   private portals = new THREE.Group();
-  private teacher = new THREE.Group();
+  private interactables = new THREE.Group();
+  private teacher = createCharacter({ kind: 'teacher', variant: 0, name: 'teacher-classroom' });
+  private officeTeacher = createCharacter({ kind: 'teacher', variant: 2, name: 'teacher-office' });
+  private students = new THREE.Group();
+  private studentCharacters: THREE.Object3D[] = [];
   private player = new THREE.Mesh(new THREE.ConeGeometry(.13, .45, 8), new THREE.MeshBasicMaterial({ color: 0xf4bb79 }));
   private rain: THREE.Points;
   private rainPositions: Float32Array;
@@ -60,13 +89,16 @@ export class WorldRenderer {
   private view = '';
   private drag: { id: number; x: number; y: number } | null = null;
   private portalRequested = false;
+  private activePromptKey = '';
+  private activePrompt: InteractionPrompt | null = null;
   private slowSeconds = 0;
   private chasing = false;
   private state: WorldState | null = null;
   private resizeObserver: ResizeObserver;
   onTick: (dt: number) => void = () => {};
   onRoom: (room: Room) => void = () => {};
-  onInteract: () => void = () => {};
+  onInteract: (prompt?: InteractionPrompt | null) => void = () => {};
+  onInteractionPrompt: (prompt: InteractionPrompt | null) => void = () => {};
   onCaught: () => void = () => {};
   onStatus: (message: string) => void = () => {};
   onView: () => void = () => {};
@@ -94,9 +126,9 @@ export class WorldRenderer {
     this.scene.add(this.moon);
     const lamp = new THREE.PointLight(0xffd0a0, 14, 9, 2);
     lamp.position.set(-1, 2.7, -1);
-    this.scene.add(lamp, this.player, this.portals, this.teacher);
+    this.scene.add(lamp, this.player, this.portals, this.interactables, this.teacher, this.officeTeacher, this.students);
     this.player.position.y = .6;
-    this.buildTeacher();
+    this.buildStudents();
     this.rainPositions = new Float32Array(this.profile.rainCount * 3);
     for (let i = 0; i < this.rainPositions.length; i += 3) {
       this.rainPositions[i] = Math.random() * 20 - 10;
@@ -114,20 +146,15 @@ export class WorldRenderer {
     this.resize();
   }
 
-  private buildTeacher() {
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x272337, roughness: .95 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xaf9181, roughness: .92 });
-    const dress = new THREE.Mesh(new THREE.CylinderGeometry(.18, .32, 1.1, 10), cloth);
-    dress.position.y = .75;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(.17, 12, 8), skin);
-    head.scale.set(.85, 1.12, 1);
-    head.position.y = 1.48;
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(.185, 12, 8), new THREE.MeshStandardMaterial({ color: 0x16151c, roughness: 1 }));
-    hair.scale.set(1, 1.2, .85);
-    hair.position.set(0, 1.53, .07);
-    const book = new THREE.Mesh(new THREE.BoxGeometry(.27, .34, .055), new THREE.MeshStandardMaterial({ color: 0x844b43, roughness: 1 }));
-    book.position.set(.27, .94, -.16);
-    this.teacher.add(dress, head, hair, book);
+  private buildStudents() {
+    const variants = [1, 2, 3, 4, 0, 2, 1, 3];
+    for (const [index, variant] of variants.entries()) {
+      const student = createCharacter({ kind: 'student', variant, name: `student-${index + 1}` });
+      this.studentCharacters.push(student);
+      this.students.add(student);
+    }
+    this.teacher.userData.baseY = 0;
+    this.officeTeacher.userData.baseY = 0;
   }
 
   async load(room: Room): Promise<void> {
@@ -172,11 +199,17 @@ export class WorldRenderer {
         ring.userData.targetRoom = portal.target;
         this.portals.add(ring);
       }
-      this.teacher.position.set(-1, 0, -2.8);
+      this.disposeObjects(this.interactables);
+      this.interactables.clear();
+      this.createHotspots(room);
+      this.positionCharacters(room);
       this.chasing = false;
       this.portalRequested = false;
+      this.activePrompt = null;
+      this.activePromptKey = '';
+      this.onInteractionPrompt(null);
       this.destination = null;
-      this.yaw = room === 'corridor' ? -Math.PI / 2 : 0;
+      this.yaw = room === 'corridor' ? -Math.PI / 2 : room === 'office' ? Math.PI : 0;
       this.pitch = 0;
       this.loaded = true;
       this.resize();
@@ -188,6 +221,77 @@ export class WorldRenderer {
     } catch (error) {
       this.onStatus(`场景加载失败：${error instanceof Error ? error.message : String(error)}。可在设置里重试。`);
     }
+  }
+
+  private createHotspots(room: Room) {
+    const defs = HOTSPOTS.filter((hotspot) => hotspot.room === room);
+    for (const hotspot of defs) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(.27, .035, 6, 18), new THREE.MeshBasicMaterial({ color: 0xb9d8c2, transparent: true, opacity: .92 }));
+      ring.position.set(hotspot.x, .06, hotspot.z);
+      ring.rotation.x = -Math.PI / 2;
+      ring.userData.hotspotId = hotspot.id;
+      const beacon = new THREE.Mesh(new THREE.CylinderGeometry(.012, .045, .65, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xb9d8c2, transparent: true, opacity: .2, depthWrite: false }));
+      beacon.position.set(hotspot.x, .38, hotspot.z);
+      beacon.userData.hotspotId = hotspot.id;
+      this.interactables.add(ring, beacon);
+    }
+  }
+
+  private positionCharacters(room: Room) {
+    const classroom = [[-3.45, 1.8], [-2.15, 1.8], [1.55, 1.8], [2.85, 1.8], [-2.8, .35], [2.25, .35]];
+    const corridor = [[-3.25, .08], [2.65, -.08]];
+    const office = [[-2.75, -3.05]];
+    const positions = room === 'classroom' ? classroom : room === 'corridor' ? corridor : office;
+    this.studentCharacters.forEach((student, index) => {
+      const position = positions[index];
+      student.visible = Boolean(position);
+      if (position) {
+        student.position.set(position[0], 0, position[1]);
+        student.rotation.y = room === 'classroom' ? Math.PI : index % 2 ? Math.PI / 2 : -Math.PI / 2;
+        student.userData.baseY = 0;
+      }
+    });
+    this.teacher.visible = room === 'classroom' || this.chasing;
+    this.teacher.position.set(-1.15, 0, -2.65);
+    this.teacher.rotation.y = 0;
+    this.officeTeacher.visible = room === 'office';
+    this.officeTeacher.position.set(1.55, 0, -3.05);
+    this.officeTeacher.rotation.y = 0;
+  }
+
+  private interactionAt(state: WorldState): InteractionPrompt | null {
+    const portal = PORTALS[state.room].find((candidate) => Math.hypot(candidate.x - state.position.x, candidate.z - state.position.z) < 1.25);
+    if (portal) return {
+      id: `portal:${portal.target}`,
+      label: `进入${portal.label}`,
+      hint: '抵达门口后按 E 进入相邻房间',
+      actionIds: [],
+      distance: Math.hypot(portal.x - state.position.x, portal.z - state.position.z),
+      kind: 'portal',
+      targetRoom: portal.target,
+    };
+    const hotspot = HOTSPOTS.filter((item) => item.room === state.room)
+      .map((item) => ({ item, distance: Math.hypot(item.x - state.position.x, item.z - state.position.z) }))
+      .filter(({ distance }) => distance < 1.55)
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (!hotspot) return null;
+    return { id: hotspot.item.id, label: hotspot.item.label, hint: hotspot.item.hint, actionIds: hotspot.item.actionIds, distance: hotspot.distance, kind: 'hotspot' };
+  }
+
+  private updateInteractionPrompt(state: WorldState) {
+    if (!['playing', 'chase'].includes(state.phase) || state.switchRemaining > 0) return;
+    const prompt = this.interactionAt(state);
+    const key = prompt ? `${prompt.kind}:${prompt.id}` : '';
+    if (key === this.activePromptKey) return;
+    this.activePromptKey = key;
+    this.activePrompt = prompt;
+    this.onInteractionPrompt(prompt);
+  }
+
+  private animateCharacters(elapsed: number, state: WorldState) {
+    animateCharacter(this.teacher, elapsed, 0, state.phase === 'chase');
+    animateCharacter(this.officeTeacher, elapsed, 1.2, false);
+    this.studentCharacters.forEach((student, index) => animateCharacter(student, elapsed, index * .7, false));
   }
 
   spawn(room: Room): { x: number; z: number } { return { x: SPAWN[room][0], z: SPAWN[room][1] }; }
@@ -223,9 +327,12 @@ export class WorldRenderer {
     if (!document.hidden && !this.lost && this.loaded) {
       this.move(dt, state);
       this.onTick(dt);
+      this.updateInteractionPrompt(state);
+      this.animateCharacters(now / 1000, state);
       this.updateView(state);
       this.player.position.set(state.position.x, .7, state.position.z);
       this.teacher.visible = state.room === 'classroom' || state.phase === 'chase';
+      this.officeTeacher.visible = state.room === 'office' && state.phase !== 'ending';
       if (state.phase === 'chase' && !this.chasing) {
         this.teacher.position.set(state.position.x + (state.room === 'corridor' ? -3 : 3), 0, state.position.z);
       }
@@ -297,10 +404,11 @@ export class WorldRenderer {
   }
   interact() {
     if (!this.running || !this.state || !this.loaded || !['playing', 'chase'].includes(this.state.phase)) return;
-    const s = this.state;
-    const portal = PORTALS[s.room].find(p => Math.hypot(p.x - s.position.x, p.z - s.position.z) < 1.25);
-    if (portal && !this.portalRequested) { this.portalRequested = true; this.onRoom(portal.target); }
-    else this.onInteract();
+    const prompt = this.interactionAt(this.state);
+    if (prompt?.kind === 'portal' && prompt.targetRoom && !this.portalRequested) {
+      this.portalRequested = true;
+      this.onRoom(prompt.targetRoom);
+    } else this.onInteract(prompt);
   }
   private bindInput() {
     const signal = this.abort.signal;
@@ -331,7 +439,13 @@ export class WorldRenderer {
         if (portal?.object.userData.targetRoom) {
           this.destination = portal.object.position.clone();
           this.onStatus('走近门口后按 E 或「交互」进入。');
-        } else if (this.ray.ray.intersectPlane(this.plane, this.target)) this.destination = this.target.clone();
+        } else {
+          const hotspot = this.ray.intersectObjects(this.interactables.children)[0];
+          if (hotspot?.object.userData.hotspotId) {
+            this.destination = hotspot.object.position.clone();
+            this.onStatus('正在前往场景目标，靠近后按 E 调查。');
+          } else if (this.ray.ray.intersectPlane(this.plane, this.target)) this.destination = this.target.clone();
+        }
       }
     }, { signal });
     this.canvas.addEventListener('pointermove', e => {

@@ -1,8 +1,8 @@
-import { createGame, act, tick, advance, getActions, getObjectives, EVENT_DETAILS, type GameState } from './simulation/game';
+import { createGame, act, tick, advance, getActions, getObjectives, EVENT_DETAILS, type GameAction, type GameState } from './simulation/game';
 import { generateBackSeatCandidates, generateFrontSeatSelection, adjustFrontSeat } from './simulation/seats.js';
 import { pickDifficulty, DIFFICULTY_CONFIG } from './simulation/difficulty.js';
 import { getStatusTier, OUTCOME_LABELS } from './simulation/outcomes.js';
-import type { WorldRenderer, Room } from './render/WorldRenderer';
+import type { WorldRenderer, Room, InteractionPrompt } from './render/WorldRenderer';
 import type { Quality } from './render/qualityProfiles';
 import { AudioSystem } from './audio/AudioSystem';
 import './ui/styles.css';
@@ -26,6 +26,7 @@ let gameGeneration = 0;
 let notice = '';
 let storedNotice = '';
 let playerName = '';
+let activePrompt: InteractionPrompt | null = null;
 try {
   highestChapter = Math.max(1, Math.min(6, Number(localStorage.getItem(`${SAVE}progress`)) || 1));
   const settings = JSON.parse(localStorage.getItem(`${SAVE}settings`) || '{}');
@@ -189,18 +190,20 @@ function showSeats(options: StartOptions) {
 async function enterPlay() {
   if (!game) return;
   screen = 'play'; panelOpen = true;
+  activePrompt = null;
   const generation = ++gameGeneration;
   world?.dispose(); world = null;
   await audio.unlock().catch(() => {});
   const canvas = element('canvas', { id: 'game-canvas', 'aria-label': '校园探索场景', tabindex: 0 });
   const panel = element('section', { class: 'event-drawer', id: 'event-drawer', 'aria-label': '当前事件' });
+  const interactionHub = element('aside', { class: 'interaction-hub', id: 'interaction-hub', 'aria-label': '场景交互', 'aria-live': 'polite' });
   app.replaceChildren(element('main', { id: 'game-shell', class: 'game-shell' }, [
     element('div', { class: 'scene-layer' }, [canvas]),
     element('header', { class: 'hud-top' }, [
       element('div', { class: 'hud-brand' }, [element('span', { class: 'hud-mark', text: 'LF' }), element('span', { id: 'chapter-label' })]),
       element('nav', { class: 'hud-actions', 'aria-label': '游戏工具' }, [
         button('3D', switchView, 'icon-button', 'view'),
-        button('事件', () => { panelOpen = !panelOpen; panel.hidden = !panelOpen; }, 'icon-button', 'panel'),
+        button('事件', () => { panelOpen = !panelOpen; panel.hidden = !panelOpen; updateHud(); }, 'icon-button', 'panel'),
         button('记录', openJournal, 'icon-button', 'journal'),
         button('帮助', openHelp, 'icon-button', 'help'),
         button('全屏', () => void fullScreen(), 'icon-button', 'fullscreen'),
@@ -218,9 +221,9 @@ async function enterPlay() {
     ]),
     element('div', { class: 'event-rail', id: 'event-rail', 'aria-label': '当前课表' }),
     element('div', { id: 'scene-status', class: 'scene-status', role: 'status' }),
-    element('div', { class: 'crosshair', 'aria-hidden': true }), panel,
+    element('div', { class: 'crosshair', 'aria-hidden': true }), panel, interactionHub,
     element('div', { id: 'toast', class: 'toast', role: 'status', 'aria-live': 'polite', text: notice }),
-    element('div', { class: 'control-hint', text: 'WASD 移动 · 拖拽转向 · E 交互 · V 切换视角 · I 事件面板' }),
+    element('div', { class: 'control-hint', text: 'WASD 移动 · 拖拽转向 · E 场景交互 · V 切换视角 · I 事件面板' }),
     element('div', { class: 'mobile-controls' }, [
       element('div', { id: 'joystick', class: 'virtual-stick', role: 'group', 'aria-label': '移动摇杆' }, [element('span', { class: 'stick-knob' })]),
       button('交互', () => world?.interact(), 'touch-interact', 'interact'),
@@ -242,7 +245,18 @@ async function enterPlay() {
       } else doAction(`go:${room}`);
     };
     world.onView = switchView;
-    world.onInteract = () => { panelOpen = true; panel.hidden = false; say('观察当前场景，并在事件面板里选择行动。'); };
+    world.onInteractionPrompt = prompt => { activePrompt = prompt; renderInteractionHub(); };
+    world.onInteract = prompt => {
+      activePrompt = prompt || activePrompt;
+      const contextual = activePrompt ? getContextualActions(activePrompt) : [];
+      const next = contextual.find(action => !action.disabled);
+      if (next) { doAction(next.id); return; }
+      panelOpen = true;
+      panel.hidden = false;
+      renderInteractionHub();
+      say(activePrompt ? `${activePrompt.label}：从下方选择要执行的行动。` : '靠近场景中的金色标记，再按 E 进行交互。');
+      document.querySelector<HTMLButtonElement>('#interaction-hub button:not(:disabled)')?.focus({ preventScroll: true });
+    };
     world.onCaught = () => doAction('caught');
     world.onTick = dt => {
       if (!game || screen !== 'play') return;
@@ -302,6 +316,36 @@ function updateHud() {
   document.querySelector('#game-shell')?.classList.toggle('is-chase', game.phase === 'chase');
   for (let i = 1; i <= 2; i++) document.getElementById(`status-${i}`)?.parentElement?.setAttribute('data-tier', String(Math.min(3, Math.floor((i === 1 ? game.suspicion : game.pressure) / 25))));
 }
+function contextualActionPool(): GameAction[] {
+  if (!game) return [];
+  return getActions(game).filter(action => !action.id.startsWith('event:') && !action.id.startsWith('go:') && action.id !== 'switch-view');
+}
+function getContextualActions(prompt: InteractionPrompt): GameAction[] {
+  const actions = contextualActionPool();
+  if (!prompt.actionIds.length) return [];
+  return prompt.actionIds.map(id => actions.find(action => action.id === id)).filter((action): action is GameAction => Boolean(action));
+}
+function renderInteractionHub() {
+  const hub = document.querySelector<HTMLElement>('#interaction-hub');
+  if (!hub || !game) return;
+  if (game.phase === 'ending') { hub.hidden = true; return; }
+  hub.hidden = false;
+  const actions = activePrompt ? getContextualActions(activePrompt) : [];
+  const routes = getActions(game).filter(action => action.id.startsWith('go:') && !action.disabled);
+  const title = activePrompt ? activePrompt.label : '场景交互';
+  const hint = activePrompt ? activePrompt.hint : '靠近场景标记后按 E；也可以点击此处选择当前目标的行动。';
+  hub.replaceChildren(
+    element('div', { class: 'interaction-kicker', text: activePrompt ? '附近目标 / NEARBY' : '交互系统 / CONTEXT' }),
+    element('div', { class: 'interaction-title', text: title }),
+    element('p', { class: 'interaction-hint', text: hint }),
+    actions.length ? element('div', { class: 'interaction-actions' }, actions.slice(0, 4).map(action => {
+      const node = button(action.label, () => doAction(action.id), `interaction-action ${action.disabled ? 'is-disabled' : ''}`, action.id);
+      node.disabled = Boolean(action.disabled);
+      return node;
+    })) : element('p', { class: 'interaction-empty', text: activePrompt ? '当前目标暂时没有可执行行动；先完成事件面板中的前置目标。' : '移动到金色场景标记附近开始调查。' }),
+    routes.length ? element('div', { class: 'interaction-routes' }, [element('span', { text: '前往' }), ...routes.map(action => button(action.label, () => doAction(action.id), 'route-action', action.id))]) : element('span'),
+  );
+}
 function renderEvent() {
   if (!game || screen !== 'play') return;
   const g = game;
@@ -329,21 +373,16 @@ function renderEvent() {
     panel.replaceChildren(element('div', { class: 'drawer-rule' }),
       element('div', { class: 'event-heading' }, [element('div', { class: 'event-title-wrap' }, [element('span', { class: 'event-index', text: `事件 ${String(g.events.indexOf(g.currentEvent) + 1).padStart(2, '0')} / ${String(g.events.length).padStart(2, '0')}` }), element('h3', { text: details(g.currentEvent)?.label || g.currentEvent })]), button('收起', () => { panelOpen = false; panel.hidden = true; updateHud(); }, 'text-button')]),
       element('ul', { class: 'objectives' }, objectives.map(text => element('li', { text }))),
-      element('div', { class: 'button-grid' }, getActions(g).filter(action => !action.id.startsWith('event:') && action.id !== 'switch-view').map(action => {
-        const node = button(action.label, () => doAction(action.id), 'action-button', action.id); node.disabled = !!action.disabled; return node;
-      })),
-      element('p', { class: 'event-summary', text: `今日协作剩余 ${g.roleUses} 次；所有线索与进度在两个视角间同步。` }));
+      element('p', { class: 'event-summary', text: `今日协作剩余 ${g.roleUses} 次；靠近场景目标后，使用下方交互卡片完成调查。` }));
   }
   panel.hidden = !panelOpen;
+  renderInteractionHub();
 }
 function refreshTimedEvent() {
   if (!game || !['playing', 'chase'].includes(game.phase)) return;
   const list = document.querySelector('.objectives');
   list?.replaceChildren(...getObjectives(game).map(text => element('li', { text })));
-  for (const action of getActions(game)) {
-    const node = document.querySelector<HTMLButtonElement>(`#event-drawer [data-action="${action.id}"]`);
-    if (node) { node.disabled = !!action.disabled; if (node.textContent !== action.label) node.textContent = action.label; }
-  }
+  renderInteractionHub();
 }
 
 function endingText(outcome: GameState['outcome']) {
